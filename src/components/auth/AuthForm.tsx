@@ -85,16 +85,33 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
         };
         await setDoc(userDocRef, newUserProfile);
         toast({ title: "Account Created", description: `Welcome! Your ${values.role} account is ready.` });
-        router.replace(values.role === 'candidate' ? "/dashboard/candidate" : "/dashboard");
-      } else {
+        
+        if (values.role === 'candidate') {
+          router.replace('/dashboard/candidate/profile'); // Redirect candidate to their profile
+        } else if (values.role === 'recruiter') {
+          router.replace('/dashboard');
+        } else {
+          router.replace('/'); // Fallback
+        }
+
+      } else { // Login
         userCredential = await signInWithEmailAndPassword(firebaseAuth, values.email, values.password);
         const user = userCredential.user;
         const userDocRef = doc(firebaseDb, "users", user.uid);
         const userDocSnap = await getDoc(userDocRef);
+
         if (userDocSnap.exists()) {
           const userProfile = userDocSnap.data() as UserProfile;
           toast({ title: "Logged In", description: "Welcome back!" });
-          router.replace(userProfile.role === 'candidate' ? "/dashboard/candidate" : "/dashboard");
+          if (userProfile.role === 'candidate') {
+            router.replace('/dashboard/candidate/profile'); // Redirect candidate to their profile
+          } else if (userProfile.role === 'recruiter') {
+            router.replace('/dashboard');
+          } else {
+            // Fallback, should not happen if role is always set
+            router.replace('/');
+            toast({ variant: "destructive", title: "Login Error", description: "User role is unclear. Redirecting to home." });
+          }
         } else {
           toast({ variant: "destructive", title: "Login Error", description: "User profile not found. Please try signing up." });
           router.replace("/signup"); 
@@ -205,4 +222,3 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
     </div>
   );
 }
-
