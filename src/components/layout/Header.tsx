@@ -1,9 +1,10 @@
+
 "use client";
 
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { LogIn, UserPlus, LayoutDashboard, LogOut, Briefcase } from 'lucide-react';
+import { LogIn, UserPlus, LayoutDashboard, LogOut, Briefcase, Search } from 'lucide-react'; // Added Search
 import { useRouter } from 'next/navigation';
 
 export default function Header() {
@@ -21,11 +22,16 @@ export default function Header() {
         <Link href="/" className="text-2xl font-headline font-bold text-primary">
           PlatformPro Jobs
         </Link>
-        <nav className="flex items-center gap-4">
+        <nav className="flex items-center gap-2 md:gap-4">
           {loading ? (
-            <p>Loading...</p>
+            <div className="h-9 w-24 rounded-md bg-muted animate-pulse" /> // Skeleton for loading state
           ) : user ? (
             <>
+              <Button variant="ghost" asChild>
+                <Link href="/jobs">
+                  <Search className="mr-2 h-4 w-4" /> Browse Jobs
+                </Link>
+              </Button>
               {userProfile?.role === 'recruiter' && (
                 <Button variant="ghost" asChild>
                   <Link href="/dashboard">
@@ -39,6 +45,11 @@ export default function Header() {
             </>
           ) : (
             <>
+              <Button variant="ghost" asChild>
+                <Link href="/jobs">
+                  <Search className="mr-2 h-4 w-4" /> Browse Jobs
+                </Link>
+              </Button>
               <Button variant="ghost" asChild>
                 <Link href="/login">
                   <LogIn className="mr-2 h-4 w-4" /> Login
