@@ -20,7 +20,7 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, type UserCredential } from "firebase/auth";
 import { auth as firebaseAuth, db as firebaseDb, firebaseSuccessfullyInitialized } from "@/lib/firebase"; 
-import { doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore"; // Added getDoc here
+import { doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import type { UserProfile } from "@/lib/types";
 import { useAuth } from "@/hooks/useAuth";
@@ -68,7 +68,7 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
     try {
       let userCredential: UserCredential;
       if (isSignUp) {
-        if (!values.role) { // Should be caught by Zod, but as a safeguard
+        if (!values.role) { 
           toast({ variant: "destructive", title: "Validation Error", description: "Role selection is required to sign up." });
           setIsLoading(false);
           return;
@@ -85,21 +85,19 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
         };
         await setDoc(userDocRef, newUserProfile);
         toast({ title: "Account Created", description: `Welcome! Your ${values.role} account is ready.` });
-        router.push(values.role === 'candidate' ? "/dashboard/candidate" : "/dashboard");
+        router.replace(values.role === 'candidate' ? "/dashboard/candidate" : "/dashboard");
       } else {
         userCredential = await signInWithEmailAndPassword(firebaseAuth, values.email, values.password);
-        // After login, fetch profile to determine redirect
         const user = userCredential.user;
         const userDocRef = doc(firebaseDb, "users", user.uid);
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
           const userProfile = userDocSnap.data() as UserProfile;
           toast({ title: "Logged In", description: "Welcome back!" });
-          router.push(userProfile.role === 'candidate' ? "/dashboard/candidate" : "/dashboard");
+          router.replace(userProfile.role === 'candidate' ? "/dashboard/candidate" : "/dashboard");
         } else {
-          // Fallback if profile doesn't exist for some reason, though signup should create it
-          toast({ title: "Logged In", description: "Welcome back! Profile error." });
-          router.push("/"); // Fallback to home
+          toast({ variant: "destructive", title: "Login Error", description: "User profile not found. Please try signing up." });
+          router.replace("/signup"); 
         }
       }
     } catch (error: any) {
@@ -207,3 +205,4 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
     </div>
   );
 }
+
