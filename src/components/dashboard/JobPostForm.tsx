@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import { Loader2, Info, ShoppingCart } from "lucide-react";
+import { Loader2, Info, ShoppingCart, AlertTriangle } from "lucide-react"; // Added AlertTriangle
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
@@ -202,20 +202,34 @@ export default function JobPostForm() {
         </Alert>
 
         {!canPostJob && !authLoading && (
-          <div className="text-center my-8 p-6 border border-dashed rounded-md">
-            <h3 className="text-xl font-semibold mb-2">No Job Posts Left</h3>
+          <div className="text-center my-8 p-6 border border-dashed rounded-md bg-card">
+            <h3 className="text-xl font-semibold mb-2 text-foreground">No Job Posts Left</h3>
             <p className="text-muted-foreground mb-4">You've used all your available job posts. To post more jobs, please purchase additional credits.</p>
+            
+            {!stripeSuccessfullyInitialized && (
+                <Alert variant="destructive" className="mb-4 text-left">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Stripe Configuration Incomplete</AlertTitle>
+                    <AlertDescription>
+                        The payment system is not fully configured by the site administrator.
+                        The purchase button is disabled. Please check server logs for details on missing Stripe environment variables.
+                    </AlertDescription>
+                </Alert>
+            )}
+            
             <Button 
               onClick={handlePurchase}
               disabled={isPurchasing || !stripeSuccessfullyInitialized}
               className="bg-accent hover:bg-accent/90 text-accent-foreground"
+              aria-disabled={!stripeSuccessfullyInitialized}
             >
               {isPurchasing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ShoppingCart className="mr-2 h-5 w-5" />}
               Purchase Job Posts (5 EUR per post)
             </Button>
-            {!stripeSuccessfullyInitialized && (
-                <p className="text-xs text-destructive mt-2">Stripe payments are not configured by the site administrator.</p>
-            )}
+            {/* The following less prominent message is now part of the Alert above if Stripe isn't initialized.
+                We can remove it if the Alert is sufficient, or keep for redundancy.
+                The Alert is now the primary indicator for why the button is disabled due to Stripe config.
+            */}
           </div>
         )}
 
@@ -339,3 +353,5 @@ export default function JobPostForm() {
     </Card>
   );
 }
+
+    
