@@ -132,17 +132,17 @@ export default function JobPostForm() {
       return;
     }
 
-    // stripeSuccessfullyInitialized now checks for Publishable and Secret keys.
-    // STRIPE_JOB_POST_PRICE_ID is checked here because it's vital for this specific action.
+    // This check ensures the button is enabled only if Publishable and Secret keys are present.
     if (!stripeSuccessfullyInitialized) {
-      toast({ variant: "destructive", title: "Configuration Error", description: "Core Stripe keys (Publishable or Secret) are missing. Cannot proceed with purchase." });
+      toast({ variant: "destructive", title: "Stripe Error", description: "Core Stripe keys (Publishable or Secret) are missing. Cannot initiate purchase." });
       return;
     }
+    // This check ensures the Price ID (from STRIPE_PRICE_PREMIUM) is available to tell Stripe what to charge for.
     if (!STRIPE_JOB_POST_PRICE_ID) {
         toast({
             variant: "destructive",
             title: "Configuration Error",
-            description: "Stripe Price ID for job posts is not configured. Please contact the site administrator.",
+            description: "Cannot proceed: Stripe Price ID for job posts (STRIPE_PRICE_PREMIUM) is not configured by the site administrator. Please set this in the environment variables.",
         });
         return;
     }
@@ -165,8 +165,8 @@ export default function JobPostForm() {
       const { sessionId } = await response.json();
       const stripe = await getStripe();
 
-      if (!stripe) { // This implies STRIPE_PUBLISHABLE_KEY was missing, caught by stripeSuccessfullyInitialized already
-        throw new Error('Stripe.js failed to load.');
+      if (!stripe) {
+        throw new Error('Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.');
       }
 
       const { error } = await stripe.redirectToCheckout({ sessionId });
@@ -217,28 +217,47 @@ export default function JobPostForm() {
             <h3 className="text-xl font-semibold mb-2 text-foreground">No Job Posts Left</h3>
             <p className="text-muted-foreground mb-4">You've used all your available job posts. To post more jobs, please purchase additional credits.</p>
             
-            {/* This alert shows if the very basic Stripe keys are missing */}
             {!stripeSuccessfullyInitialized && (
                 <Alert variant="destructive" className="mb-4 text-left">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Stripe Configuration Incomplete</AlertTitle>
                     <AlertDescription>
-                        The payment system's core keys are not fully configured by the site administrator.
-                        The purchase button is disabled. Please check server logs for details on missing Stripe environment variables (Publishable or Secret Key).
+                        The payment system's core keys (Publishable or Secret Key) are not fully configured by the site administrator.
+                        The purchase button is disabled. Please check server logs for details on missing Stripe environment variables.
                     </AlertDescription>
                 </Alert>
             )}
             
             <Button 
               onClick={handlePurchase}
-              disabled={isPurchasing || !stripeSuccessfullyInitialized} // Button disabled if core keys missing
+              disabled={isPurchasing || !stripeSuccessfullyInitialized} 
               className="bg-accent hover:bg-accent/90 text-accent-foreground"
               aria-disabled={!stripeSuccessfullyInitialized}
             >
               {isPurchasing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ShoppingCart className="mr-2 h-5 w-5" />}
               Purchase Job Posts (5 EUR per post)
             </Button>
-            {/* A further warning if Price ID is missing but button is enabled will be handled by a toast on click */}
+            {!STRIPE_JOB_POST_PRICE_ID && stripeSuccessfullyInitialized && (
+                 <Alert variant="warning" className="mt-4 text-left max-w-md mx-auto">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Price Not Configured</AlertTitle>
+                    <AlertDescription>
+                        The purchase button is enabled, but the specific Price ID for job posts (STRIPE_PRICE_PREMIUM) is missing.
+                        Purchases cannot be completed. The site administrator needs to set this environment variable.
+                    </AlertDescription>
+                </Alert>
+            )}
+             {!STRIPE_WEBHOOK_SECRET && stripeSuccessfullyInitialized && STRIPE_JOB_POST_PRICE_ID && (
+                 <Alert variant="info" className="mt-4 text-left max-w-md mx-auto">
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Note on Payment Confirmation</AlertTitle>
+                    <AlertDescription>
+                        The Stripe Webhook Secret (STRIPE_WEBHOOK_SECRET) is not configured.
+                        While you can proceed to payment, automatic crediting of posts after successful payment will not work.
+                        The site administrator needs to set this for full functionality.
+                    </AlertDescription>
+                </Alert>
+            )}
           </div>
         )}
 
