@@ -204,30 +204,33 @@ export default function JobPostForm() {
 
       if (stripeJsError) {
         console.error("Stripe.js redirect error object:", stripeJsError);
+        // This case handles errors returned by Stripe.js itself, not SecurityError thrown by the redirect attempt.
         throw new Error(stripeJsError.message || "Stripe.js reported an error during redirect setup.");
       }
     } catch (error: any) {
-      console.error("Purchase error or redirect exception:", error);
+      console.error("Purchase error or redirect exception:", error); // This logs the actual error, including SecurityError
 
+      // Check if it's the specific navigation permission error
       if (checkoutSessionId && error.message && error.message.includes("Failed to set a named property 'href' on 'Location'")) {
         toast({
           variant: "warning",
-          title: "Automatic Redirect Blocked",
-          description: "Opening Stripe Checkout in a new tab. Please complete your purchase there.",
-          duration: 8000,
+          title: "Stripe Checkout: New Tab",
+          description: "Automatic redirect to Stripe was blocked by the browser (this is common in embedded windows). We've tried to open Stripe Checkout in a NEW BROWSER TAB. Please check for it and complete your purchase there. If no new tab appeared, please check your browser's pop-up blocker settings for this site.",
+          duration: 15000, // Increased duration for visibility
         });
         const checkoutUrl = `https://checkout.stripe.com/c/pay/${checkoutSessionId}`;
         const newWindow = window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
         if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
             toast({
                 variant: "destructive",
-                title: "Popup Blocked",
-                description: "Could not open Stripe Checkout in a new tab. Please disable your popup blocker for this site and try again.",
-                duration: 8000,
+                title: "Popup Blocker Active?",
+                description: "Opening Stripe Checkout in a new tab failed. Your browser's pop-up blocker might have stopped it. Please temporarily disable your pop-up blocker for this site and try purchasing again.",
+                duration: 15000, // Increased duration
             });
         }
       } else {
-        toast({ variant: "destructive", title: "Purchase Error", description: error.message || "An unexpected error occurred." });
+        // Handle other unexpected errors (e.g., network issues, other Stripe.js errors not caught above)
+        toast({ variant: "destructive", title: "Purchase Error", description: error.message || "An unexpected error occurred. Please try again." });
       }
     } finally {
       setIsPurchasing(false);
@@ -424,3 +427,4 @@ export default function JobPostForm() {
     </Card>
   );
 }
+
