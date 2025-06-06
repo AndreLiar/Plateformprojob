@@ -1,14 +1,28 @@
 
 import { collection, getDocs, orderBy, query, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Job } from '@/lib/types';
+import type { Job, ContractType, ExperienceLevel } from '@/lib/types'; // Import original types
 import JobListCard from '@/components/dashboard/JobListCard'; // Reusing the card, suitable for public view
 import { Briefcase } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
-async function getJobs(): Promise<Job[]> {
+// Define a type for the job structure after serialization for Server Component context
+interface SerializedJob {
+  id: string;
+  title: string;
+  description: string;
+  platform: string;
+  location: string;
+  contractType: ContractType;
+  experienceLevel: ExperienceLevel;
+  recruiterId: string;
+  createdAt: string; // Changed to string
+  updatedAt: string; // Changed to string
+}
+
+async function getJobs(): Promise<SerializedJob[]> {
   if (!db) {
     console.warn("Firestore DB instance is not available for fetching jobs.");
     return [];
@@ -17,18 +31,21 @@ async function getJobs(): Promise<Job[]> {
     const jobsCollection = collection(db, 'jobs');
     const q = query(jobsCollection, orderBy('createdAt', 'desc'));
     const querySnapshot = await getDocs(q);
-    const jobs = querySnapshot.docs.map(doc => {
+    const jobs: SerializedJob[] = querySnapshot.docs.map(doc => {
       const data = doc.data();
-      // Ensure Firestore Timestamps are correctly handled if they need conversion
-      // For direct usage in components, they might be fine, but often need toDate()
+      // Ensure Firestore Timestamps are correctly converted to ISO strings
       return {
         id: doc.id,
-        ...data,
-        // If createdAt/updatedAt are not Timestamps on read, conversion might be needed earlier
-        // For now, assuming JobListCard handles Timestamp objects correctly for date formatting
-        createdAt: data.createdAt as Timestamp, 
-        updatedAt: data.updatedAt as Timestamp,
-      } as Job;
+        title: data.title,
+        description: data.description,
+        platform: data.platform,
+        location: data.location,
+        contractType: data.contractType as ContractType,
+        experienceLevel: data.experienceLevel as ExperienceLevel,
+        recruiterId: data.recruiterId,
+        createdAt: (data.createdAt as Timestamp).toDate().toISOString(),
+        updatedAt: (data.updatedAt as Timestamp).toDate().toISOString(),
+      };
     });
     return jobs;
   } catch (error) {
@@ -76,7 +93,9 @@ export default async function BrowseJobsPage() {
       </h1>
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {jobs.map(job => (
-          <JobListCard key={job.id} job={job} />
+          // Cast to 'any' or a more specific prop type if JobListCard expects the original Job type
+          // For now, assuming JobListCard will be updated to handle string dates
+          <JobListCard key={job.id} job={job as any} />
         ))}
       </div>
     </div>

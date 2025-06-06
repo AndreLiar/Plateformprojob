@@ -1,21 +1,26 @@
 
 "use client";
 
-import type { Job } from '@/lib/types';
+import type { Job as OriginalJobType, Timestamp } from '@/lib/types'; // Original Job type
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Briefcase, MapPin, Zap, CalendarDays, CheckCircle, Send } from 'lucide-react';
+import { Briefcase, MapPin, Zap, CheckCircle, Send } from 'lucide-react'; // Removed CalendarDays as it's not used directly for display here
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, useCallback } from 'react';
-import ApplyJobDialog from '@/components/jobs/ApplyJobDialog'; // Adjusted path
+import ApplyJobDialog from '@/components/jobs/ApplyJobDialog';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 
+// Define a type for the job prop that JobListCard can receive, allowing for string or Timestamp dates
+interface JobForCard extends Omit<OriginalJobType, 'createdAt' | 'updatedAt'> {
+  createdAt?: Timestamp | string;
+  updatedAt?: Timestamp | string;
+}
+
 interface JobListCardProps {
-  job: Job;
-  // showApplyButton?: boolean; // Keep if needed for explicit control from parent
+  job: JobForCard;
 }
 
 export default function JobListCard({ job }: JobListCardProps) {
@@ -24,7 +29,21 @@ export default function JobListCard({ job }: JobListCardProps) {
   const [hasApplied, setHasApplied] = useState(false);
   const [checkingApplicationStatus, setCheckingApplicationStatus] = useState(false);
 
-  const postedDate = job.createdAt?.toDate ? formatDistanceToNow(job.createdAt.toDate(), { addSuffix: true }) : 'N/A';
+  const getProcessedDate = (dateInput: Timestamp | string | undefined): Date | null => {
+    if (!dateInput) return null;
+    if (typeof dateInput === 'string') {
+      const d = new Date(dateInput);
+      return isNaN(d.getTime()) ? null : d; // Check for invalid date string
+    }
+    // Check if it's a Firestore Timestamp (it has a toDate method)
+    if (dateInput && typeof (dateInput as Timestamp).toDate === 'function') {
+      return (dateInput as Timestamp).toDate();
+    }
+    return null; 
+  };
+
+  const creationDate = getProcessedDate(job.createdAt);
+  const postedDate = creationDate ? formatDistanceToNow(creationDate, { addSuffix: true }) : 'N/A';
 
   const checkApplicationStatus = useCallback(async () => {
     if (user && job.id) {
@@ -41,7 +60,7 @@ export default function JobListCard({ job }: JobListCardProps) {
         setHasApplied(!querySnapshot.empty);
       } catch (error) {
         console.error("Error checking application status:", error);
-        setHasApplied(false); // Default to not applied on error
+        setHasApplied(false); 
       } finally {
         setCheckingApplicationStatus(false);
       }
@@ -55,12 +74,17 @@ export default function JobListCard({ job }: JobListCardProps) {
   }, [userProfile, job.id, checkApplicationStatus]);
   
   const handleApplicationSubmitted = () => {
-    setHasApplied(true); // Assume submission was successful and update UI immediately
-    // Optionally, re-fetch or re-check status if strict confirmation is needed
+    setHasApplied(true); 
     checkApplicationStatus();
   };
 
   const showApplyAction = userProfile?.role === 'candidate' && job.id;
+
+  // Ensure the job object passed to ApplyJobDialog is compatible with its expected `Job` type.
+  // Since ApplyJobDialog primarily uses id, title, recruiterId, this should be okay.
+  // If ApplyJobDialog needed Timestamp dates, we'd have to convert strings back or fetch the original job.
+  const jobForDialog = job as OriginalJobType;
+
 
   return (
     <>
@@ -102,12 +126,11 @@ export default function JobListCard({ job }: JobListCardProps) {
               </Button>
             )
           )}
-          {/* Recruiters might see other actions here */}
         </CardFooter>
       </Card>
       {job.id && showApplyAction && (
         <ApplyJobDialog
-          job={job}
+          job={jobForDialog} // Pass the suitably typed job object
           open={isApplyDialogOpen}
           onOpenChange={setIsApplyDialogOpen}
           onApplicationSubmitted={handleApplicationSubmitted}
