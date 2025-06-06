@@ -3,7 +3,7 @@
 
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react'; // Added useState
 import { Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
@@ -13,62 +13,85 @@ interface AuthGuardProps {
 }
 
 export default function AuthGuard({ children, allowedRoles = ['recruiter'] }: AuthGuardProps) {
-  const { user, userProfile, loading, firebaseInitializationError, logout } = useAuth();
+  const { user, userProfile, loading: authLoading, firebaseInitializationError, logout } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   useEffect(() => {
-    if (firebaseInitializationError) {
+    // Reset redirecting state if authLoading or firebaseInitializationError changes,
+    // or if user/userProfile changes significantly (e.g., logout)
+    setIsRedirecting(false);
+
+    if (firebaseInitializationError || authLoading) {
+      // Still waiting for Firebase to init or auth state to load
       return;
     }
 
-    if (!loading) {
-      if (!user) {
-        router.replace('/login');
-      } else if (user && !userProfile) {
-        // User is authenticated, but profile is not loaded/found in Firestore.
-        toast({
-          variant: "destructive",
-          title: "Profile Issue",
-          description: "Your user profile could not be loaded. You will be logged out. Please try signing up or logging in again."
-        });
-        const performLogout = async () => {
-          await logout();
-          router.replace('/login');
-        };
-        performLogout();
-      } else if (userProfile) {
-        if (typeof userProfile.role === 'undefined') {
-          // Role is missing from the profile object
-          toast({
-            variant: "destructive",
-            title: "Profile Issue",
-            description: "User role is not defined in your profile. You will be logged out. Please contact support or try signing up again."
-          });
-          const performLogout = async () => {
-            await logout();
-            router.replace('/login');
-          };
-          performLogout();
-        } else if (typeof userProfile.role === 'string' && !allowedRoles.includes(userProfile.role)) {
-          toast({
-            variant: "destructive",
-            title: "Access Denied",
-            description: `You do not have permission to view this page. Your role: '${userProfile.role}'. Required: '${allowedRoles.join("', '")}'.`
-          });
-          // Intelligent redirect based on actual role if mismatched
-          if (userProfile.role === 'candidate') {
-            router.replace('/dashboard/candidate');
-          } else if (userProfile.role === 'recruiter') {
-            router.replace('/dashboard');
-          } else {
-            router.replace('/'); // Fallback for unknown roles
-          }
-        }
-        // If role is valid and in allowedRoles, access is implicitly granted by reaching the render stage
-      }
+    if (!user) {
+      // No user, definitely redirect to login
+      router.replace('/login');
+      setIsRedirecting(true);
+      return;
     }
-  }, [user, userProfile, loading, router, allowedRoles, firebaseInitializationError, toast, logout]);
+
+    // User is authenticated, check profile
+    if (!userProfile) {
+      // User is authenticated, but profile is not loaded/found in Firestore.
+      // This could be a transient state if authLoading just turned false,
+      // but if it persists, it's an issue.
+      toast({
+        variant: "destructive",
+        title: "Profile Issue",
+        description: "Your user profile could not be loaded. Logging out."
+      });
+      const performLogout = async () => {
+        await logout();
+        // No explicit redirect here, relying on auth state change to trigger the !user block
+      };
+      performLogout();
+      setIsRedirecting(true); // Indicate redirection is happening due to logout
+      return;
+    }
+
+    // User and userProfile are available, and authLoading is false.
+    if (typeof userProfile.role === 'undefined') {
+      toast({
+        variant: "destructive",
+        title: "Profile Issue",
+        description: "User role is not defined. Logging out."
+      });
+      const performLogout = async () => {
+        await logout();
+      };
+      performLogout();
+      setIsRedirecting(true);
+      return;
+    }
+
+    if (typeof userProfile.role === 'string' && !allowedRoles.includes(userProfile.role)) {
+      const actualRole = userProfile.role;
+      toast({
+        variant: "destructive",
+        title: "Access Denied",
+        description: `Redirecting... Your role: '${actualRole}'. Required: '${allowedRoles.join("', '")}'.`
+      });
+
+      if (actualRole === 'candidate') {
+        router.replace('/dashboard/candidate/profile');
+      } else if (actualRole === 'recruiter') {
+        router.replace('/dashboard');
+      } else {
+        router.replace('/');
+      }
+      setIsRedirecting(true);
+      return;
+    }
+
+    // If all checks pass and no redirect was needed, ensure isRedirecting is false.
+    // This is mostly handled by the reset at the beginning of useEffect.
+
+  }, [user, userProfile, authLoading, router, allowedRoles, firebaseInitializationError, toast, logout]);
 
   if (firebaseInitializationError) {
     return (
@@ -84,7 +107,8 @@ export default function AuthGuard({ children, allowedRoles = ['recruiter'] }: Au
     );
   }
 
-  if (loading || (!user && !firebaseInitializationError)) {
+  // Show loader if auth is loading OR if the guard has initiated a redirect.
+  if (authLoading || isRedirecting) {
     return (
       <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -92,13 +116,14 @@ export default function AuthGuard({ children, allowedRoles = ['recruiter'] }: Au
     );
   }
 
-  // Check conditions for rendering children
+  // If user is authenticated, profile is loaded, role is correct, and not redirecting:
   if (user && userProfile && typeof userProfile.role === 'string' && allowedRoles.includes(userProfile.role)) {
     return <>{children}</>;
   }
 
-  // Fallback: Show loader while useEffect processes and redirects or determines access.
-  // This state should ideally be brief or covered by the conditions above.
+  // Fallback loader if conditions for rendering children are not met AND
+  // not covered by authLoading or isRedirecting.
+  // This indicates an unexpected state, possibly while auth state is transitioning.
   return (
     <div className="flex justify-center items-center h-screen">
       <Loader2 className="h-12 w-12 animate-spin text-primary" />
