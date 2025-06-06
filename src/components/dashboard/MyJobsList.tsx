@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import type { Job } from '@/lib/types';
-import JobListCard from './JobListCard';
+import JobListCard from './JobListCard'; // JobListCard now handles recruiter view
 import { Loader2, PlusCircle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -101,7 +101,8 @@ export default function MyJobsList() {
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {jobs.map(job => (
-            <JobListCard key={job.id} job={job} />
+            // Pass isRecruiterView={true} to JobListCard
+            <JobListCard key={job.id} job={job} isRecruiterView={true} />
           ))}
         </div>
       )}

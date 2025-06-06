@@ -5,37 +5,40 @@ import type { Job as OriginalJobType, Timestamp } from '@/lib/types'; // Origina
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Briefcase, MapPin, Zap, CheckCircle, Send } from 'lucide-react'; // Removed CalendarDays as it's not used directly for display here
+import { Briefcase, MapPin, Zap, CheckCircle, Send, Users } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, useCallback } from 'react';
 import ApplyJobDialog from '@/components/jobs/ApplyJobDialog';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import ViewApplicantsDialog from '@/components/dashboard/recruiter/ViewApplicantsDialog'; // Import the new dialog
 
-// Define a type for the job prop that JobListCard can receive, allowing for string or Timestamp dates
+// Define a type for the job prop that JobListCard can receive
 interface JobForCard extends Omit<OriginalJobType, 'createdAt' | 'updatedAt'> {
   createdAt?: Timestamp | string;
   updatedAt?: Timestamp | string;
+  // id must be present
 }
 
 interface JobListCardProps {
   job: JobForCard;
+  isRecruiterView?: boolean; // New prop to indicate recruiter context
 }
 
-export default function JobListCard({ job }: JobListCardProps) {
+export default function JobListCard({ job, isRecruiterView = false }: JobListCardProps) {
   const { user, userProfile, loading: authLoading } = useAuth();
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
   const [checkingApplicationStatus, setCheckingApplicationStatus] = useState(false);
+  const [isViewApplicantsDialogOpen, setIsViewApplicantsDialogOpen] = useState(false); // State for new dialog
 
   const getProcessedDate = (dateInput: Timestamp | string | undefined): Date | null => {
     if (!dateInput) return null;
     if (typeof dateInput === 'string') {
       const d = new Date(dateInput);
-      return isNaN(d.getTime()) ? null : d; // Check for invalid date string
+      return isNaN(d.getTime()) ? null : d;
     }
-    // Check if it's a Firestore Timestamp (it has a toDate method)
     if (dateInput && typeof (dateInput as Timestamp).toDate === 'function') {
       return (dateInput as Timestamp).toDate();
     }
@@ -68,23 +71,19 @@ export default function JobListCard({ job }: JobListCardProps) {
   }, [user, job.id]);
 
   useEffect(() => {
-    if (userProfile?.role === 'candidate' && job.id) {
+    if (!isRecruiterView && userProfile?.role === 'candidate' && job.id) {
       checkApplicationStatus();
     }
-  }, [userProfile, job.id, checkApplicationStatus]);
+  }, [userProfile, job.id, checkApplicationStatus, isRecruiterView]);
   
   const handleApplicationSubmitted = () => {
     setHasApplied(true); 
     checkApplicationStatus();
   };
 
-  const showApplyAction = userProfile?.role === 'candidate' && job.id;
+  const showApplyAction = !isRecruiterView && userProfile?.role === 'candidate' && job.id;
 
-  // Ensure the job object passed to ApplyJobDialog is compatible with its expected `Job` type.
-  // Since ApplyJobDialog primarily uses id, title, recruiterId, this should be okay.
-  // If ApplyJobDialog needed Timestamp dates, we'd have to convert strings back or fetch the original job.
-  const jobForDialog = job as OriginalJobType;
-
+  const jobForDialog = job as OriginalJobType; // Assume conversion or type compatibility for dialogs
 
   return (
     <>
@@ -113,7 +112,11 @@ export default function JobListCard({ job }: JobListCardProps) {
           </div>
         </CardContent>
         <CardFooter className="border-t pt-4 flex justify-end">
-          {showApplyAction && !authLoading && (
+          {isRecruiterView && userProfile?.role === 'recruiter' && job.id ? (
+            <Button variant="outline" size="sm" onClick={() => setIsViewApplicantsDialogOpen(true)}>
+              <Users className="mr-2 h-4 w-4" /> View Applicants
+            </Button>
+          ) : showApplyAction && !authLoading ? (
             checkingApplicationStatus ? (
               <Button variant="outline" size="sm" disabled>Checking Status...</Button>
             ) : hasApplied ? (
@@ -125,15 +128,26 @@ export default function JobListCard({ job }: JobListCardProps) {
                 <Send className="mr-2 h-4 w-4" /> Apply Now
               </Button>
             )
-          )}
+          ) : null /* Placeholder for public view with no actions or other actions */}
         </CardFooter>
       </Card>
-      {job.id && showApplyAction && (
+
+      {/* Apply Dialog for Candidates */}
+      {job.id && showApplyAction && !isRecruiterView && (
         <ApplyJobDialog
-          job={jobForDialog} // Pass the suitably typed job object
+          job={jobForDialog}
           open={isApplyDialogOpen}
           onOpenChange={setIsApplyDialogOpen}
           onApplicationSubmitted={handleApplicationSubmitted}
+        />
+      )}
+
+      {/* View Applicants Dialog for Recruiters */}
+      {job.id && isRecruiterView && userProfile?.role === 'recruiter' && (
+        <ViewApplicantsDialog
+            job={jobForDialog}
+            open={isViewApplicantsDialogOpen}
+            onOpenChange={setIsViewApplicantsDialogOpen}
         />
       )}
     </>
