@@ -11,6 +11,7 @@ console.log(`[Stripe Config] NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: RawValue='${raw
 // Stripe Secret Key (for server-side API calls)
 const rawSecretKey = process.env.STRIPE_SECRET_KEY;
 export const STRIPE_SECRET_KEY = rawSecretKey?.trim();
+// For secrets, avoid logging the actual key value to the console, even in dev. Log its presence and type.
 console.log(`[Stripe Config] STRIPE_SECRET_KEY: RawIsSet='${!!rawSecretKey}', RawType='${typeof rawSecretKey}', TrimmedIsSet='${!!STRIPE_SECRET_KEY}'`);
 
 // Stripe Price ID for the "Job Post" product - Read from STRIPE_PRICE_PREMIUM
@@ -21,6 +22,7 @@ console.log(`[Stripe Config] STRIPE_PRICE_PREMIUM (for Job Post Price ID): RawVa
 // Stripe Webhook Secret (for verifying webhook signatures on the server)
 const rawWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 export const STRIPE_WEBHOOK_SECRET = rawWebhookSecret?.trim();
+// For secrets, avoid logging the actual key value to the console.
 console.log(`[Stripe Config] STRIPE_WEBHOOK_SECRET: RawIsSet='${!!rawWebhookSecret}', RawType='${typeof rawWebhookSecret}', TrimmedIsSet='${!!STRIPE_WEBHOOK_SECRET}'`);
 
 // This flag enables the purchase button if the two core keys are present.
@@ -33,31 +35,32 @@ console.log(`[Stripe Config] stripeSuccessfullyInitialized (for enabling purchas
 
 if (!stripeSuccessfullyInitialized) {
   const missingKeys: string[] = [];
-  if (!STRIPE_PUBLISHABLE_KEY) missingKeys.push("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY");
-  if (!STRIPE_SECRET_KEY) missingKeys.push("STRIPE_SECRET_KEY");
+  if (!STRIPE_PUBLISHABLE_KEY) missingKeys.push("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY (trimmed value is missing/empty)");
+  if (!STRIPE_SECRET_KEY) missingKeys.push("STRIPE_SECRET_KEY (trimmed value is missing/empty)");
   
-  const message = `[Stripe Config] Basic Stripe configuration for ENABLING PURCHASE BUTTON is INCOMPLETE. Missing keys: [${missingKeys.join(', ')}]. The purchase button will be disabled.`;
+  const message = `[Stripe Config] Basic Stripe configuration for ENABLING PURCHASE BUTTON is INCOMPLETE. Missing core keys for button enablement: [${missingKeys.join(', ')}]. The purchase button will be disabled. Please check server logs.`;
   console.warn(message);
 } else {
   console.log("[Stripe Config] Basic Stripe configuration (Publishable and Secret keys) for ENABLING PURCHASE BUTTON appears COMPLETE.");
   // Warnings for other keys needed for full functionality
   if (!STRIPE_JOB_POST_PRICE_ID) {
-    console.warn("[Stripe Config] CRITICAL FOR PURCHASE: STRIPE_PRICE_PREMIUM (provides Job Post Price ID) is missing or empty. Users will NOT be able to complete purchases for job posts even if the button is enabled.");
+    console.warn("[Stripe Config] CRITICAL FOR PURCHASE COMPLETION: STRIPE_PRICE_PREMIUM (provides Job Post Price ID) is missing or empty. Users will NOT be able to complete purchases for job posts even if the button is enabled.");
   }
   if (!STRIPE_WEBHOOK_SECRET) {
-    console.warn("[Stripe Config] CRITICAL FOR POST-PURCHASE: STRIPE_WEBHOOK_SECRET is missing or empty. Payment confirmation and post crediting via webhooks will fail.");
+    console.warn("[Stripe Config] CRITICAL FOR POST-PURCHASE PROCESSING: STRIPE_WEBHOOK_SECRET is missing or empty. Payment confirmation and post crediting via webhooks will fail.");
   }
 }
 
-const allStripeVarsPresentForFullFunctionality = 
+const allStripeVarsPresentForFullFunctionality =
     !!STRIPE_PUBLISHABLE_KEY &&
     !!STRIPE_SECRET_KEY &&
     !!STRIPE_WEBHOOK_SECRET &&
     !!STRIPE_JOB_POST_PRICE_ID;
 
 if (!allStripeVarsPresentForFullFunctionality) {
-    console.warn("[Stripe Config] === For FULL Stripe functionality (purchase AND crediting posts), please ensure all four variables are set: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, STRIPE_SECRET_KEY, STRIPE_PRICE_PREMIUM, STRIPE_WEBHOOK_SECRET in your .env.local file and RESTART the Next.js server. ===");
+    console.warn("[Stripe Config] === For FULL Stripe functionality (purchase AND crediting posts), please ensure all four variables are set (NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_PREMIUM) in your .env.local file and RESTART the Next.js server. ===");
 } else {
     console.log("[Stripe Config] All four Stripe-related environment variables for full functionality appear to be present and trimmed correctly.");
 }
 console.log("--- End Stripe Configuration Check (Server-Side) ---");
+
