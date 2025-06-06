@@ -20,7 +20,7 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, type UserCredential } from "firebase/auth";
 import { auth as firebaseAuth, db as firebaseDb, firebaseSuccessfullyInitialized } from "@/lib/firebase"; 
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore"; // Added getDoc here
 import { useRouter } from "next/navigation";
 import type { UserProfile } from "@/lib/types";
 import { useAuth } from "@/hooks/useAuth";
