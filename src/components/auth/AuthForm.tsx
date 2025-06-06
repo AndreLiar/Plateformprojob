@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, UserCredential } from "firebase/auth";
-import { auth, db, googleProvider } from "@/lib/firebase";
+import { auth as firebaseAuth, db as firebaseDb, googleProvider, firebaseSuccessfullyInitialized } from "@/lib/firebase"; // Import firebaseSuccessfullyInitialized
 import { doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import type { UserProfile } from "@/lib/types";
@@ -36,8 +37,7 @@ interface AuthFormProps {
 export default function AuthForm({ isSignUp = false }: AuthFormProps) {
   const { toast } = useToast();
   const router = useRouter();
-  // Access the explicit setter from useAuth if needed, or rely on onAuthStateChanged
-  // const { fetchSetUserProfile } = useAuth(); 
+  const { firebaseInitializationError } = useAuth(); // Get error state from context
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
@@ -51,27 +51,28 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (!firebaseSuccessfullyInitialized || !firebaseAuth || !firebaseDb) {
+      toast({ variant: "destructive", title: "Configuration Error", description: "Firebase is not configured. Cannot proceed." });
+      return;
+    }
     setIsLoading(true);
     try {
       let userCredential: UserCredential;
       if (isSignUp) {
-        userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+        userCredential = await createUserWithEmailAndPassword(firebaseAuth, values.email, values.password);
         const user = userCredential.user;
-        // Set user role in Firestore
-        const userDocRef = doc(db, "users", user.uid);
+        const userDocRef = doc(firebaseDb, "users", user.uid);
         const newUserProfile: UserProfile = {
             uid: user.uid,
             email: user.email,
             displayName: user.displayName,
-            role: 'recruiter', // Default role
+            role: 'recruiter', 
             createdAt: serverTimestamp() as any,
         };
         await setDoc(userDocRef, newUserProfile);
-        // await fetchSetUserProfile(user, 'recruiter'); // Explicitly set profile
         toast({ title: "Account Created", description: "Welcome! You can now post jobs." });
       } else {
-        userCredential = await signInWithEmailAndPassword(auth, values.email, values.password);
-        // await fetchSetUserProfile(userCredential.user); // Ensure profile is loaded
+        userCredential = await signInWithEmailAndPassword(firebaseAuth, values.email, values.password);
         toast({ title: "Logged In", description: "Welcome back!" });
       }
       router.push("/dashboard");
@@ -87,11 +88,15 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
   }
 
   async function handleGoogleSignIn() {
+    if (!firebaseSuccessfullyInitialized || !firebaseAuth || !firebaseDb || !googleProvider) {
+      toast({ variant: "destructive", title: "Configuration Error", description: "Firebase is not configured. Cannot sign in with Google." });
+      return;
+    }
     setIsGoogleLoading(true);
     try {
-      const result = await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(firebaseAuth, googleProvider);
       const user = result.user;
-      const userDocRef = doc(db, "users", user.uid);
+      const userDocRef = doc(firebaseDb, "users", user.uid);
       const userDocSnap = await getDoc(userDocRef);
 
       if (!userDocSnap.exists()) {
@@ -99,13 +104,10 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
             uid: user.uid,
             email: user.email,
             displayName: user.displayName,
-            role: 'recruiter', // Default role
+            role: 'recruiter', 
             createdAt: serverTimestamp() as any,
         };
         await setDoc(userDocRef, newUserProfile);
-        // await fetchSetUserProfile(user, 'recruiter');
-      } else {
-        // await fetchSetUserProfile(user);
       }
       toast({ title: "Signed In with Google", description: "Welcome!" });
       router.push("/dashboard");
@@ -118,6 +120,20 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
     } finally {
       setIsGoogleLoading(false);
     }
+  }
+
+  if (firebaseInitializationError) {
+    return (
+      <div className="max-w-md mx-auto mt-10 p-8 border rounded-lg shadow-xl bg-card text-center">
+        <h2 className="text-2xl font-headline font-semibold text-destructive mb-4">
+          {isSignUp ? "Create Account" : "Login"} Unavailable
+        </h2>
+        <p className="text-muted-foreground">
+          Authentication services are currently unavailable due to a Firebase configuration issue.
+          Please ensure environment variables (e.g., NEXT_PUBLIC_FIREBASE_API_KEY) are set correctly.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -178,3 +194,4 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
     </div>
   );
 }
+

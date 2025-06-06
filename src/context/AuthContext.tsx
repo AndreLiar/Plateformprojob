@@ -1,8 +1,9 @@
+
 "use client";
 
 import type { User as FirebaseUser } from 'firebase/auth';
 import { createContext, useContext, useEffect, useState } from 'react';
-import { auth, db } from '@/lib/firebase';
+import { auth as firebaseAuth, db as firebaseDb, firebaseSuccessfullyInitialized, googleProvider } from '@/lib/firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import type { UserProfile } from '@/lib/types';
 
@@ -11,6 +12,7 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   loading: boolean;
   logout: () => Promise<void>;
+  firebaseInitializationError: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,49 +21,84 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [firebaseInitializationError, setFirebaseInitializationError] = useState(!firebaseSuccessfullyInitialized);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
-      setLoading(true);
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        if (userDocSnap.exists()) {
-          setUserProfile(userDocSnap.data() as UserProfile);
-        } else {
-          // Create new user profile if it doesn't exist (e.g. first social login)
-          const newUserProfile: UserProfile = {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            displayName: firebaseUser.displayName,
-            role: 'recruiter', // Default role
-            createdAt: serverTimestamp() as any, // Will be converted by Firestore
-          };
-          await setDoc(userDocRef, newUserProfile);
-          setUserProfile(newUserProfile);
-        }
-      } else {
-        setUser(null);
-        setUserProfile(null);
-      }
+    if (!firebaseSuccessfullyInitialized) {
       setLoading(false);
-    });
+      setUser(null);
+      setUserProfile(null);
+      setFirebaseInitializationError(true);
+      console.error("AuthContext: Firebase not initialized correctly. Auth features will be disabled.");
+      return; 
+    }
+    
+    setFirebaseInitializationError(false);
 
-    return () => unsubscribe();
+    if (firebaseAuth) {
+      const unsubscribe = firebaseAuth.onAuthStateChanged(async (currentFirebaseUser) => {
+        setLoading(true);
+        if (currentFirebaseUser) {
+          setUser(currentFirebaseUser);
+          const userDocRef = doc(firebaseDb!, 'users', currentFirebaseUser.uid); // firebaseDb should be defined if firebaseSuccessfullyInitialized is true
+          const userDocSnap = await getDoc(userDocRef);
+          if (userDocSnap.exists()) {
+            setUserProfile(userDocSnap.data() as UserProfile);
+          } else {
+            const newUserProfile: UserProfile = {
+              uid: currentFirebaseUser.uid,
+              email: currentFirebaseUser.email,
+              displayName: currentFirebaseUser.displayName,
+              role: 'recruiter', 
+              createdAt: serverTimestamp() as any,
+            };
+            await setDoc(userDocRef, newUserProfile);
+            setUserProfile(newUserProfile);
+          }
+        } else {
+          setUser(null);
+          setUserProfile(null);
+        }
+        setLoading(false);
+      });
+      return () => unsubscribe();
+    } else {
+      // Fallback if firebaseAuth is somehow null despite firebaseSuccessfullyInitialized being true
+      setLoading(false);
+      setUser(null);
+      setUserProfile(null);
+      setFirebaseInitializationError(true); // Mark as error if auth object is missing
+      console.error("AuthContext: Firebase auth object is missing even after successful initialization flag. Auth features disabled.");
+    }
   }, []);
 
+
   const logout = async () => {
-    setLoading(true);
-    await auth.signOut();
-    setUser(null);
-    setUserProfile(null);
-    setLoading(false);
+    if (!firebaseSuccessfullyInitialized || !firebaseAuth) {
+      console.warn("Logout called but Firebase auth is not initialized.");
+      setUser(null);
+      setUserProfile(null);
+      return;
+    }
+    setLoading(true); // Ensure loading state is managed during logout
+    try {
+      await firebaseAuth.signOut();
+      setUser(null);
+      setUserProfile(null);
+    } catch (error) {
+      console.error("Error during logout:", error);
+      // Optionally, inform the user about the logout error
+    } finally {
+      setLoading(false);
+    }
   };
   
-  // Function to explicitly set user profile after signup to ensure role is set immediately
-  const fetchSetUserProfile = async (firebaseUser: FirebaseUser, role: 'recruiter' | 'candidate' = 'recruiter') => {
-    const userDocRef = doc(db, 'users', firebaseUser.uid);
+  const fetchSetUserProfile = async (currentFirebaseUser: FirebaseUser, role: 'recruiter' | 'candidate' = 'recruiter') => {
+    if (!firebaseSuccessfullyInitialized || !firebaseDb) {
+        console.error("Cannot fetch/set user profile: Firebase DB not initialized.");
+        return null;
+    }
+    const userDocRef = doc(firebaseDb, 'users', currentFirebaseUser.uid);
     let profileData: UserProfile;
     const userDocSnap = await getDoc(userDocRef);
 
@@ -69,9 +106,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         profileData = userDocSnap.data() as UserProfile;
     } else {
         profileData = {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            displayName: firebaseUser.displayName,
+            uid: currentFirebaseUser.uid,
+            email: currentFirebaseUser.email,
+            displayName: currentFirebaseUser.displayName,
             role,
             createdAt: serverTimestamp() as any,
         };
@@ -83,16 +120,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, logout }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, logout, firebaseInitializationError }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = (): AuthContextType => {
+// useAuth hook remains the same as it's defined in a separate file (src/hooks/useAuth.ts)
+// and just re-exports this context's consumer.
+export const useAuthInternal = (): AuthContextType => { // Renamed to avoid conflict if useAuth is imported elsewhere
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuthInternal must be used within an AuthProvider');
   }
   return context;
 };
+
