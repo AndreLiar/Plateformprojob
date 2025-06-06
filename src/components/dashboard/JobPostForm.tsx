@@ -33,7 +33,7 @@ import type { ContractType, ExperienceLevel, UserProfile } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { STRIPE_PUBLISHABLE_KEY, STRIPE_JOB_POST_PRICE_ID } from "@/lib/stripeConfig"; // Import client-relevant configs
+import { STRIPE_PUBLISHABLE_KEY, STRIPE_JOB_POST_PRICE_ID } from "@/lib/stripeConfig"; 
 import getStripe from "@/lib/getStripe";
 
 const jobSchema = z.object({
@@ -49,6 +49,7 @@ const contractTypes: ContractType[] = ["Full-time", "Part-time", "Contract"];
 const experienceLevels: ExperienceLevel[] = ["Entry", "Mid", "Senior"];
 
 // Client-side check for basic Stripe.js initialization capability
+// STRIPE_PUBLISHABLE_KEY is imported and directly usable client-side
 const canInitializeStripeJs = !!STRIPE_PUBLISHABLE_KEY;
 
 export default function JobPostForm() {
@@ -118,7 +119,7 @@ export default function JobPostForm() {
       }
       
       form.reset();
-      router.push('/dashboard/my-jobs'); // Navigate to my-jobs after successful post
+      router.push('/dashboard/my-jobs'); 
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -137,7 +138,6 @@ export default function JobPostForm() {
     }
 
     if (!canInitializeStripeJs) {
-      // This check should ideally be redundant if the button is disabled, but good for safety.
       toast({ 
         variant: "destructive", 
         title: "Stripe Error", 
@@ -150,8 +150,9 @@ export default function JobPostForm() {
         toast({
             variant: "destructive",
             title: "Configuration Error",
-            description: "Cannot proceed: Stripe Price ID for job posts (STRIPE_PRICE_PREMIUM) is not configured by the site administrator. Please set this in the environment variables.",
+            description: "Cannot proceed: Stripe Price ID for job posts (NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) is missing. Please ensure this is set in your environment variables.",
         });
+        setIsPurchasing(false);
         return;
     }
 
@@ -166,23 +167,35 @@ export default function JobPostForm() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        // Log the detailed error from the server API
-        console.error("Create Checkout Session API Error:", errorData);
+        let errorData = { error: `API request failed with status ${response.status}` };
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+          try {
+            errorData = await response.json();
+          } catch (e) {
+            console.error("Failed to parse JSON error response:", e);
+            // errorData already has a default message if parsing fails
+          }
+        } else {
+          // If not JSON, try to get text for more context
+          const textError = await response.text();
+          console.error("API Error (HTML/Text Response):", textError); // Log the HTML/text
+          errorData.error = `API returned non-JSON response. Status: ${response.status}. Check browser console for full error text.`;
+        }
+        
         toast({ 
             variant: "destructive", 
             title: "Checkout Creation Failed", 
-            description: errorData.error || 'Failed to create Stripe session. Check server logs for more details on NEXT_STRIPE_SECRET_KEY or STRIPE_PRICE_PREMIUM issues.' 
+            description: errorData.error || 'Failed to create Stripe session. Check server logs and console.' 
         });
-        setIsPurchasing(false); // Reset purchasing state on API error
+        setIsPurchasing(false);
         return;
       }
 
-      const { sessionId } = await response.json();
+      const { sessionId } = await response.json(); // This should be safe if response.ok is true
       const stripe = await getStripe();
 
       if (!stripe) {
-        // This should ideally be caught by canInitializeStripeJs earlier
         throw new Error('Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.');
       }
 
@@ -196,11 +209,7 @@ export default function JobPostForm() {
       toast({ variant: "destructive", title: "Purchase Error", description: error.message || "An unexpected error occurred." });
     } finally {
       // Only set isPurchasing to false if not redirecting, or if an error occurred before redirect
-      // If redirectToCheckout is called, the page will change, so state reset might not be visible
-      // However, if it fails before redirect, we need to reset
-      if (!(await getStripe())?.redirectToCheckout) { // A bit of a heuristic
-          setIsPurchasing(false);
-      }
+      setIsPurchasing(false);
     }
   };
 
@@ -234,26 +243,26 @@ export default function JobPostForm() {
           </AlertDescription>
         </Alert>
 
+        {!canInitializeStripeJs && !authLoading && (
+             <Alert variant="destructive" className="mb-4 text-left">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Stripe Client Configuration Incomplete</AlertTitle>
+                <AlertDescription>
+                    The Stripe Publishable Key (NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) is not configured.
+                    The purchase button is disabled. Please ensure this is set in your environment variables and the server is restarted.
+                    Your site administrator should also check server logs for details on 'NEXT_STRIPE_SECRET_KEY' for full payment functionality.
+                </AlertDescription>
+            </Alert>
+        )}
+
         {!canPostJobWithCredits && !authLoading && (
           <div className="text-center my-8 p-6 border border-dashed rounded-md bg-card">
             <h3 className="text-xl font-semibold mb-2 text-foreground">No Job Posts Left</h3>
             <p className="text-muted-foreground mb-4">You've used all your available job posts. To post more jobs, please purchase additional credits.</p>
             
-            {!canInitializeStripeJs && ( // Check if NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set
-                <Alert variant="destructive" className="mb-4 text-left">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Stripe Client Configuration Incomplete</AlertTitle>
-                    <AlertDescription>
-                        The Stripe Publishable Key (NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) is not configured.
-                        The purchase button is disabled. Please ensure this is set in your environment variables and the server is restarted.
-                        Your site administrator should also check server logs for details on 'NEXT_STRIPE_SECRET_KEY' and 'STRIPE_PRICE_PREMIUM' for full payment functionality.
-                    </AlertDescription>
-                </Alert>
-            )}
-            
             <Button 
               onClick={handlePurchase}
-              disabled={isPurchasing || !canInitializeStripeJs} // Disable if Stripe.js can't init
+              disabled={isPurchasing || !canInitializeStripeJs} 
               className="bg-accent hover:bg-accent/90 text-accent-foreground"
               aria-disabled={!canInitializeStripeJs}
             >
@@ -261,13 +270,13 @@ export default function JobPostForm() {
               Purchase Job Posts (5 EUR per post)
             </Button>
 
-            {canInitializeStripeJs && !STRIPE_JOB_POST_PRICE_ID && ( // If publishable key is OK, but price ID is missing
+            {canInitializeStripeJs && !STRIPE_JOB_POST_PRICE_ID && (
                  <Alert variant="warning" className="mt-4 text-left max-w-md mx-auto">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Price Not Configured for Purchase</AlertTitle>
                     <AlertDescription>
-                        The purchase button is enabled, but the specific Price ID for job posts (STRIPE_PRICE_PREMIUM) is missing in the server configuration.
-                        Purchases cannot be completed until the site administrator sets this environment variable.
+                        The purchase button is enabled, but the specific Price ID for job posts (NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) is missing in your environment configuration.
+                        Purchases cannot be completed until this is set.
                     </AlertDescription>
                 </Alert>
             )}
@@ -379,7 +388,7 @@ export default function JobPostForm() {
                 />
               </div>
             </fieldset>
-            {canPostJobWithCredits && ( // This button is for submitting the form using existing credits
+            {canPostJobWithCredits && ( 
               <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground transition-transform hover:scale-105" disabled={isSubmitting || authLoading || isPurchasing}>
                 {isSubmitting ? (
                   <>
