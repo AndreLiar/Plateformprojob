@@ -3,15 +3,16 @@
 
 // --- 1. Read Environment Variables ---
 const rawPublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
-const rawSecretKey = process.env.NEXT_STRIPE_SECRET_KEY; // Server-side only
+const rawSecretKey = process.env.NEXT_STRIPE_SECRET_KEY;
 const rawJobPostPriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_PREMIUM;
 
-// --- 2. Define and Export Constants ---
+// --- 2. Define and Export Constants (Trimmed values or undefined) ---
 export const STRIPE_PUBLISHABLE_KEY: string | undefined = rawPublishableKey?.trim();
-export const STRIPE_SECRET_KEY: string | undefined = rawSecretKey?.trim(); // This is the crucial export
+export const STRIPE_SECRET_KEY: string | undefined = rawSecretKey?.trim();
 export const STRIPE_JOB_POST_PRICE_ID: string | undefined = rawJobPostPriceId?.trim();
 
 // --- 3. Perform Logging (Server-Side Only, during module load) ---
+// This block only runs on the server when this module is first imported.
 if (typeof window === 'undefined') {
   console.log("--- Stripe Configuration Check (Server-Side Module Load) ---");
 
