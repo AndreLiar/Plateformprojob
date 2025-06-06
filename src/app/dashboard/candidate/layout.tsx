@@ -10,17 +10,18 @@ import {
   SidebarTrigger
 } from '@/components/ui/sidebar';
 import CandidateSidebarNav from '@/components/dashboard/candidate/CandidateSidebarNav';
-import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import LogoutButton from '@/components/dashboard/LogoutButton';
-
+import { useAuth } from '@/hooks/useAuth'; // Import useAuth to get user's name
 
 export default function CandidateDashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { userProfile } = useAuth(); // Get user profile to display name
+
   return (
     <AuthGuard allowedRoles={['candidate']}>
       <SidebarProvider defaultOpen>
@@ -38,10 +39,10 @@ export default function CandidateDashboardLayout({
             <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
               <Avatar className="h-8 w-8">
                 <AvatarImage src="https://placehold.co/40x40.png" alt="User Avatar" data-ai-hint="user avatar" />
-                <AvatarFallback>C</AvatarFallback>
+                <AvatarFallback>{userProfile?.displayName?.charAt(0) || userProfile?.email?.charAt(0)?.toUpperCase() || 'C'}</AvatarFallback>
               </Avatar>
               <div className="group-data-[collapsible=icon]:hidden">
-                 <p className="text-sm font-medium text-sidebar-foreground">Candidate Name</p> {/* Placeholder */}
+                 <p className="text-sm font-medium text-sidebar-foreground">{userProfile?.displayName || userProfile?.email || 'Candidate'}</p>
                  <LogoutButton />
               </div>
             </div>
