@@ -14,20 +14,22 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, type UserCredential } from "firebase/auth";
 import { auth as firebaseAuth, db as firebaseDb, firebaseSuccessfullyInitialized } from "@/lib/firebase"; 
-import { doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import type { UserProfile } from "@/lib/types";
 import { useAuth } from "@/hooks/useAuth";
 
 
-const formSchema = z.object({
+const baseFormSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
   password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+  role: z.enum(['recruiter', 'candidate']).optional(),
 });
 
 interface AuthFormProps {
@@ -40,12 +42,20 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
   const { firebaseInitializationError } = useAuth(); 
   const [isLoading, setIsLoading] = useState(false);
 
+  const formSchema = isSignUp
+    ? baseFormSchema.refine((data) => !!data.role, {
+        message: "Please select your role.",
+        path: ["role"],
+      })
+    : baseFormSchema;
+
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       email: "",
       password: "",
+      role: undefined,
     },
   });
 
@@ -58,6 +68,11 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
     try {
       let userCredential: UserCredential;
       if (isSignUp) {
+        if (!values.role) { // Should be caught by Zod, but as a safeguard
+          toast({ variant: "destructive", title: "Validation Error", description: "Role selection is required to sign up." });
+          setIsLoading(false);
+          return;
+        }
         userCredential = await createUserWithEmailAndPassword(firebaseAuth, values.email, values.password);
         const user = userCredential.user;
         const userDocRef = doc(firebaseDb, "users", user.uid);
@@ -65,16 +80,28 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
             uid: user.uid,
             email: user.email,
             displayName: user.displayName,
-            role: 'recruiter', 
+            role: values.role, 
             createdAt: serverTimestamp() as any,
         };
         await setDoc(userDocRef, newUserProfile);
-        toast({ title: "Account Created", description: "Welcome! You can now post jobs." });
+        toast({ title: "Account Created", description: `Welcome! Your ${values.role} account is ready.` });
+        router.push(values.role === 'candidate' ? "/dashboard/candidate" : "/dashboard");
       } else {
         userCredential = await signInWithEmailAndPassword(firebaseAuth, values.email, values.password);
-        toast({ title: "Logged In", description: "Welcome back!" });
+        // After login, fetch profile to determine redirect
+        const user = userCredential.user;
+        const userDocRef = doc(firebaseDb, "users", user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const userProfile = userDocSnap.data() as UserProfile;
+          toast({ title: "Logged In", description: "Welcome back!" });
+          router.push(userProfile.role === 'candidate' ? "/dashboard/candidate" : "/dashboard");
+        } else {
+          // Fallback if profile doesn't exist for some reason, though signup should create it
+          toast({ title: "Logged In", description: "Welcome back! Profile error." });
+          router.push("/"); // Fallback to home
+        }
       }
-      router.push("/dashboard");
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -133,6 +160,44 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
               </FormItem>
             )}
           />
+
+          {isSignUp && (
+            <FormField
+              control={form.control}
+              name="role"
+              render={({ field }) => (
+                <FormItem className="space-y-3">
+                  <FormLabel>I am a...</FormLabel>
+                  <FormControl>
+                    <RadioGroup
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                      className="flex flex-col space-y-2 pt-1"
+                    >
+                      <FormItem className="flex items-center space-x-3 space-y-0">
+                        <FormControl>
+                          <RadioGroupItem value="candidate" />
+                        </FormControl>
+                        <FormLabel className="font-normal text-sm">
+                          Candidate (Looking for jobs)
+                        </FormLabel>
+                      </FormItem>
+                      <FormItem className="flex items-center space-x-3 space-y-0">
+                        <FormControl>
+                          <RadioGroupItem value="recruiter" />
+                        </FormControl>
+                        <FormLabel className="font-normal text-sm">
+                          Recruiter (Looking to post jobs)
+                        </FormLabel>
+                      </FormItem>
+                    </RadioGroup>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
+
           <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground transition-transform hover:scale-105" disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {isSignUp ? "Sign Up" : "Login"}
