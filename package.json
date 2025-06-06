@@ -38,6 +38,7 @@
     "@stripe/stripe-js": "^4.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cloudinary": "^2.2.0",
     "date-fns": "^3.6.0",
     "firebase": "^11.8.1",
     "genkit": "^1.8.0",
