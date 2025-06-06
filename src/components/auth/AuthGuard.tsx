@@ -56,7 +56,14 @@ export default function AuthGuard({ children, allowedRoles = ['recruiter'] }: Au
             title: "Access Denied",
             description: `You do not have permission to view this page. Your role: '${userProfile.role}'. Required: '${allowedRoles.join("', '")}'.`
           });
-          router.replace('/'); // Or a more appropriate redirect like /login or candidate-specific denied page
+          // Intelligent redirect based on actual role if mismatched
+          if (userProfile.role === 'candidate') {
+            router.replace('/dashboard/candidate');
+          } else if (userProfile.role === 'recruiter') {
+            router.replace('/dashboard');
+          } else {
+            router.replace('/'); // Fallback for unknown roles
+          }
         }
         // If role is valid and in allowedRoles, access is implicitly granted by reaching the render stage
       }
@@ -98,4 +105,3 @@ export default function AuthGuard({ children, allowedRoles = ['recruiter'] }: Au
     </div>
   );
 }
-
