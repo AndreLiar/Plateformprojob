@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -78,7 +79,14 @@ export default function MyJobsList() {
 
   return (
     <div>
-      <h2 className="text-3xl font-headline font-semibold mb-6 text-primary">My Job Postings</h2>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-3xl font-headline font-semibold text-primary">My Job Postings</h2>
+        <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
+          <Link href="/dashboard/post-job">
+            <PlusCircle className="mr-2 h-5 w-5" /> Post New Job
+          </Link>
+        </Button>
+      </div>
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {jobs.map(job => (
           <JobListCard key={job.id} job={job} />
@@ -87,3 +95,4 @@ export default function MyJobsList() {
     </div>
   );
 }
+
