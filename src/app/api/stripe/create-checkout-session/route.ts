@@ -1,15 +1,23 @@
+
 // src/app/api/stripe/create-checkout-session/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import Stripe from 'stripe';
 import { STRIPE_SECRET_KEY, STRIPE_JOB_POST_PRICE_ID } from '@/lib/stripeConfig';
 
-if (!STRIPE_SECRET_KEY) {
-  throw new Error('Stripe secret key is not set in environment variables.');
-}
-
-const stripe = new Stripe(STRIPE_SECRET_KEY);
+// Removed top-level Stripe client initialization:
+// if (!STRIPE_SECRET_KEY) {
+//   throw new Error('Stripe secret key is not set in environment variables.');
+// }
+// const stripe = new Stripe(STRIPE_SECRET_KEY);
 
 export async function POST(req: NextRequest) {
+  if (!STRIPE_SECRET_KEY) {
+    console.error('Stripe secret key is not set. Cannot create Stripe client for checkout session.');
+    return NextResponse.json({ error: 'Server configuration error: Stripe secret key is missing.' }, { status: 500 });
+  }
+  // Initialize Stripe client inside the handler
+  const stripe = new Stripe(STRIPE_SECRET_KEY);
+
   try {
     const body = await req.json();
     const { userId, priceId } = body;
@@ -21,15 +29,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Price ID is required.' }, { status: 400 });
     }
     if (priceId !== STRIPE_JOB_POST_PRICE_ID) {
-        // Optional: a sanity check if you only ever sell one type of post credit this way.
         console.warn(`Received priceId ${priceId} does not match configured STRIPE_JOB_POST_PRICE_ID ${STRIPE_JOB_POST_PRICE_ID}`);
-        // Decide if you want to error out or proceed with the provided priceId
-        // For now, let's proceed but log a warning.
     }
 
-    const origin = req.headers.get('origin') || 'http://localhost:9002'; // Fallback for local dev if origin is not available
+    const origin = req.headers.get('origin') || 'http://localhost:9002'; 
     
-    // Ensure success and cancel URLs are absolute
     const successUrl = `${origin}/dashboard/post-job?session_id={CHECKOUT_SESSION_ID}&purchase=success`;
     const cancelUrl = `${origin}/dashboard/post-job?purchase=cancelled`;
 
@@ -37,16 +41,14 @@ export async function POST(req: NextRequest) {
       payment_method_types: ['card'],
       line_items: [
         {
-          price: priceId, // Use the priceId passed from the client
+          price: priceId,
           quantity: 1,
         },
       ],
       mode: 'payment',
       success_url: successUrl,
       cancel_url: cancelUrl,
-      client_reference_id: userId, // Crucial for webhook to identify the user
-      // To add customer email to Stripe checkout page (optional, Stripe can collect it too)
-      // customer_email: userEmail, // You would need to fetch/pass the user's email for this
+      client_reference_id: userId,
     });
 
     if (!session.id) {
