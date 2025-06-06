@@ -132,12 +132,15 @@ export default function JobPostForm() {
       return;
     }
 
-    // This check ensures the button is enabled only if Publishable and Secret keys are present.
     if (!stripeSuccessfullyInitialized) {
-      toast({ variant: "destructive", title: "Stripe Error", description: "Core Stripe keys (Publishable or Secret) are missing. Cannot initiate purchase." });
+      toast({ 
+        variant: "destructive", 
+        title: "Stripe Error", 
+        description: "Core Stripe keys (Publishable or Secret) are missing. Cannot initiate purchase. Please check server logs." 
+      });
       return;
     }
-    // This check ensures the Price ID (from STRIPE_PRICE_PREMIUM) is available to tell Stripe what to charge for.
+    
     if (!STRIPE_JOB_POST_PRICE_ID) {
         toast({
             variant: "destructive",
@@ -222,7 +225,7 @@ export default function JobPostForm() {
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Stripe Configuration Incomplete</AlertTitle>
                     <AlertDescription>
-                        The payment system's core keys (Publishable or Secret Key) are not fully configured by the site administrator.
+                        The payment system's core keys (Publishable Key or Secret Key) are not fully configured by the site administrator.
                         The purchase button is disabled. Please check server logs for details on missing Stripe environment variables.
                     </AlertDescription>
                 </Alert>
@@ -237,24 +240,14 @@ export default function JobPostForm() {
               {isPurchasing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ShoppingCart className="mr-2 h-5 w-5" />}
               Purchase Job Posts (5 EUR per post)
             </Button>
-            {!STRIPE_JOB_POST_PRICE_ID && stripeSuccessfullyInitialized && (
+
+            {stripeSuccessfullyInitialized && !STRIPE_JOB_POST_PRICE_ID && (
                  <Alert variant="warning" className="mt-4 text-left max-w-md mx-auto">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Price Not Configured</AlertTitle>
                     <AlertDescription>
-                        The purchase button is enabled, but the specific Price ID for job posts (STRIPE_PRICE_PREMIUM) is missing.
+                        The purchase button is enabled, but the specific Price ID for job posts (STRIPE_PRICE_PREMIUM) is missing in the server configuration.
                         Purchases cannot be completed. The site administrator needs to set this environment variable.
-                    </AlertDescription>
-                </Alert>
-            )}
-             {!STRIPE_WEBHOOK_SECRET && stripeSuccessfullyInitialized && STRIPE_JOB_POST_PRICE_ID && (
-                 <Alert variant="info" className="mt-4 text-left max-w-md mx-auto">
-                    <Info className="h-4 w-4" />
-                    <AlertTitle>Note on Payment Confirmation</AlertTitle>
-                    <AlertDescription>
-                        The Stripe Webhook Secret (STRIPE_WEBHOOK_SECRET) is not configured.
-                        While you can proceed to payment, automatic crediting of posts after successful payment will not work.
-                        The site administrator needs to set this for full functionality.
                     </AlertDescription>
                 </Alert>
             )}
@@ -381,3 +374,4 @@ export default function JobPostForm() {
     </Card>
   );
 }
+
