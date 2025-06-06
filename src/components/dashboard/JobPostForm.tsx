@@ -33,7 +33,7 @@ import type { ContractType, ExperienceLevel, UserProfile } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { STRIPE_PUBLISHABLE_KEY, STRIPE_JOB_POST_PRICE_ID } from "@/lib/stripeConfig"; 
+import { STRIPE_PUBLISHABLE_KEY, STRIPE_JOB_POST_PRICE_ID, clientSideStripePublishableKeyPresent, clientSideStripePriceIdPresent } from "@/lib/stripeConfig"; 
 import getStripe from "@/lib/getStripe";
 
 const jobSchema = z.object({
@@ -48,7 +48,7 @@ const jobSchema = z.object({
 const contractTypes: ContractType[] = ["Full-time", "Part-time", "Contract"];
 const experienceLevels: ExperienceLevel[] = ["Entry", "Mid", "Senior"];
 
-const canInitializeStripeJs = !!STRIPE_PUBLISHABLE_KEY;
+// const canInitializeStripeJs = !!STRIPE_PUBLISHABLE_KEY; // Replaced with clientSideStripePublishableKeyPresent
 
 export default function JobPostForm() {
   const { toast } = useToast();
@@ -135,7 +135,7 @@ export default function JobPostForm() {
       return;
     }
 
-    if (!canInitializeStripeJs) {
+    if (!clientSideStripePublishableKeyPresent) {
       toast({ 
         variant: "destructive", 
         title: "Stripe Error", 
@@ -144,11 +144,11 @@ export default function JobPostForm() {
       return;
     }
     
-    if (!STRIPE_JOB_POST_PRICE_ID) {
+    if (!clientSideStripePriceIdPresent || !STRIPE_JOB_POST_PRICE_ID) { // Check both, STRIPE_JOB_POST_PRICE_ID is the actual value
         toast({
             variant: "destructive",
             title: "Configuration Error",
-            description: "Cannot proceed: Stripe Price ID for job posts (NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) is missing. Please ensure this is set in your environment variables.",
+            description: "Cannot proceed: Stripe Price ID for job posts (NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) is missing. Please ensure this is set in your environment variables and available to the client.",
         });
         return;
     }
@@ -162,7 +162,8 @@ export default function JobPostForm() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId: user.uid, priceId: STRIPE_JOB_POST_PRICE_ID }),
+        // STRIPE_JOB_POST_PRICE_ID from stripeConfig is guaranteed to be a string if clientSideStripePriceIdPresent is true
+        body: JSON.stringify({ userId: user.uid, priceId: STRIPE_JOB_POST_PRICE_ID }), 
       });
 
       if (!response.ok) {
@@ -192,11 +193,14 @@ export default function JobPostForm() {
       checkoutSessionId = sessionData.sessionId;
 
       if (!checkoutSessionId) {
-        throw new Error('Failed to retrieve session ID from server.');
+        console.error("Frontend Error: Received successful API response but no sessionId.", sessionData);
+        toast({ variant: "destructive", title: "Checkout Error", description: "Failed to get a valid session ID from the server. Please try again or contact support." });
+        throw new Error('Frontend Error: Failed to retrieve a valid session ID from server response.');
       }
 
       const stripe = await getStripe();
-      if (!stripe) {
+      if (!stripe) { // getStripe returns null if STRIPE_PUBLISHABLE_KEY is missing
+        toast({ variant: "destructive", title: "Stripe Error", description: "Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set." });
         throw new Error('Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.');
       }
 
@@ -204,32 +208,30 @@ export default function JobPostForm() {
 
       if (stripeJsError) {
         console.error("Stripe.js redirect error object:", stripeJsError);
-        // This case handles errors returned by Stripe.js itself, not SecurityError thrown by the redirect attempt.
         throw new Error(stripeJsError.message || "Stripe.js reported an error during redirect setup.");
       }
     } catch (error: any) {
-      console.error("Purchase error or redirect exception:", error); // This logs the actual error, including SecurityError
+      console.error("Purchase error or redirect exception:", error); 
 
-      // Check if it's the specific navigation permission error
-      if (checkoutSessionId && error.message && error.message.includes("Failed to set a named property 'href' on 'Location'")) {
+      if (checkoutSessionId && error.message && (error.message.includes("Failed to set a named property 'href' on 'Location'") || error.message.includes("navigation was blocked because it should not be allowed by the sandboxing flags"))) {
+        const checkoutUrl = `https://checkout.stripe.com/c/pay/${checkoutSessionId}`;
+        console.log(`Attempting to open Stripe Checkout in new tab: ${checkoutUrl}`); // Log for debugging
         toast({
           variant: "warning",
-          title: "Stripe Checkout: New Tab",
-          description: "Automatic redirect to Stripe was blocked by the browser (this is common in embedded windows). We've tried to open Stripe Checkout in a NEW BROWSER TAB. Please check for it and complete your purchase there. If no new tab appeared, please check your browser's pop-up blocker settings for this site.",
-          duration: 15000, // Increased duration for visibility
+          title: "Stripe Checkout: New Tab Needed",
+          description: `Automatic redirect to Stripe was blocked (common in embedded windows). We've tried to open Stripe Checkout in a new browser tab. URL: ${checkoutUrl}. Please check for it and complete your purchase. If no new tab appeared, check your browser's pop-up blocker.`,
+          duration: 20000, // Increased duration for visibility
         });
-        const checkoutUrl = `https://checkout.stripe.com/c/pay/${checkoutSessionId}`;
         const newWindow = window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
         if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
             toast({
                 variant: "destructive",
                 title: "Popup Blocker Active?",
-                description: "Opening Stripe Checkout in a new tab failed. Your browser's pop-up blocker might have stopped it. Please temporarily disable your pop-up blocker for this site and try purchasing again.",
-                duration: 15000, // Increased duration
+                description: `Opening Stripe Checkout (URL: ${checkoutUrl}) in a new tab failed. Your browser's pop-up blocker might have stopped it. Please temporarily disable your pop-up blocker for this site and try purchasing again.`,
+                duration: 20000, 
             });
         }
       } else {
-        // Handle other unexpected errors (e.g., network issues, other Stripe.js errors not caught above)
         toast({ variant: "destructive", title: "Purchase Error", description: error.message || "An unexpected error occurred. Please try again." });
       }
     } finally {
@@ -267,14 +269,13 @@ export default function JobPostForm() {
           </AlertDescription>
         </Alert>
 
-        {!canInitializeStripeJs && !authLoading && (
+        {!clientSideStripePublishableKeyPresent && !authLoading && (
              <Alert variant="destructive" className="mb-4 text-left">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertTitle>Stripe Client Configuration Incomplete</AlertTitle>
                 <AlertDescription>
                     The Stripe Publishable Key (NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) is not configured.
                     The purchase button is disabled. Please ensure this is set in your environment variables and the server is restarted.
-                    Your site administrator should also check server logs for details on 'NEXT_STRIPE_SECRET_KEY' for full payment functionality.
                 </AlertDescription>
             </Alert>
         )}
@@ -286,21 +287,21 @@ export default function JobPostForm() {
             
             <Button 
               onClick={handlePurchase}
-              disabled={isPurchasing || !canInitializeStripeJs} 
+              disabled={isPurchasing || !clientSideStripePublishableKeyPresent || !clientSideStripePriceIdPresent} 
               className="bg-accent hover:bg-accent/90 text-accent-foreground"
-              aria-disabled={!canInitializeStripeJs}
+              aria-disabled={!clientSideStripePublishableKeyPresent || !clientSideStripePriceIdPresent}
             >
               {isPurchasing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ShoppingCart className="mr-2 h-5 w-5" />}
               Purchase Job Posts (5 EUR per post)
             </Button>
 
-            {canInitializeStripeJs && !STRIPE_JOB_POST_PRICE_ID && (
+            {clientSideStripePublishableKeyPresent && !clientSideStripePriceIdPresent && (
                  <Alert variant="warning" className="mt-4 text-left max-w-md mx-auto">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Price Not Configured for Purchase</AlertTitle>
                     <AlertDescription>
-                        The purchase button is enabled, but the specific Price ID for job posts (NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) is missing in your environment configuration.
-                        Purchases cannot be completed until this is set.
+                        The purchase button might be enabled, but the specific Price ID for job posts (NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) is missing in your client-side environment configuration.
+                        Purchases cannot be completed until this is set and the application is rebuilt/restarted.
                     </AlertDescription>
                 </Alert>
             )}
@@ -427,4 +428,3 @@ export default function JobPostForm() {
     </Card>
   );
 }
-
