@@ -1,3 +1,4 @@
+
 import type { Timestamp } from 'firebase/firestore';
 
 export interface UserProfile {
@@ -6,6 +7,8 @@ export interface UserProfile {
   displayName: string | null;
   role: 'recruiter' | 'candidate';
   createdAt: Timestamp;
+  freePostsRemaining?: number; // Optional for existing users, will be set for new ones
+  purchasedPostsRemaining?: number; // Optional for existing users
 }
 
 export type ContractType = 'Full-time' | 'Part-time' | 'Contract';

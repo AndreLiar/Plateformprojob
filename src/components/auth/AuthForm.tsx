@@ -20,7 +20,7 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, type UserCredential } from "firebase/auth";
 import { auth as firebaseAuth, db as firebaseDb, firebaseSuccessfullyInitialized } from "@/lib/firebase"; 
-import { doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, getDoc, updateDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import type { UserProfile } from "@/lib/types";
 import { useAuth } from "@/hooks/useAuth";
@@ -76,22 +76,28 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
         userCredential = await createUserWithEmailAndPassword(firebaseAuth, values.email, values.password);
         const user = userCredential.user;
         const userDocRef = doc(firebaseDb, "users", user.uid);
+        
         const newUserProfile: UserProfile = {
             uid: user.uid,
             email: user.email,
             displayName: user.displayName,
             role: values.role, 
             createdAt: serverTimestamp() as any,
+            // Initialize post counts for recruiters
+            ...(values.role === 'recruiter' && {
+              freePostsRemaining: 3,
+              purchasedPostsRemaining: 0,
+            }),
         };
         await setDoc(userDocRef, newUserProfile);
         toast({ title: "Account Created", description: `Welcome! Your ${values.role} account is ready.` });
         
         if (values.role === 'candidate') {
-          router.replace('/dashboard/candidate/profile'); // Redirect candidate to their profile
+          router.replace('/dashboard/candidate/profile'); 
         } else if (values.role === 'recruiter') {
           router.replace('/dashboard');
         } else {
-          router.replace('/'); // Fallback
+          router.replace('/'); 
         }
 
       } else { // Login
@@ -104,11 +110,17 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
           const userProfile = userDocSnap.data() as UserProfile;
           toast({ title: "Logged In", description: "Welcome back!" });
           if (userProfile.role === 'candidate') {
-            router.replace('/dashboard/candidate/profile'); // Redirect candidate to their profile
+            router.replace('/dashboard/candidate/profile'); 
           } else if (userProfile.role === 'recruiter') {
+            // Ensure post counts exist for older recruiter accounts if they log in
+            if (userProfile.freePostsRemaining === undefined || userProfile.purchasedPostsRemaining === undefined) {
+              await updateDoc(userDocRef, {
+                freePostsRemaining: userProfile.freePostsRemaining ?? 3,
+                purchasedPostsRemaining: userProfile.purchasedPostsRemaining ?? 0,
+              });
+            }
             router.replace('/dashboard');
           } else {
-            // Fallback, should not happen if role is always set
             router.replace('/');
             toast({ variant: "destructive", title: "Login Error", description: "User role is unclear. Redirecting to home." });
           }

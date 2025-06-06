@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,13 +24,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Loader2, Info, ShoppingCart } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
-import type { ContractType, ExperienceLevel } from "@/lib/types";
+import type { ContractType, ExperienceLevel, UserProfile } from "@/lib/types";
 import { useRouter } from "next/navigation";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const jobSchema = z.object({
   title: z.string().min(5, "Title must be at least 5 characters.").max(100),
@@ -45,9 +48,20 @@ const experienceLevels: ExperienceLevel[] = ["Entry", "Mid", "Senior"];
 
 export default function JobPostForm() {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Local state for post counts to update UI immediately
+  const [freePosts, setFreePosts] = useState<number | undefined>(undefined);
+  const [purchasedPosts, setPurchasedPosts] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (userProfile) {
+      setFreePosts(userProfile.freePostsRemaining ?? 0);
+      setPurchasedPosts(userProfile.purchasedPostsRemaining ?? 0);
+    }
+  }, [userProfile]);
 
   const form = useForm<z.infer<typeof jobSchema>>({
     resolver: zodResolver(jobSchema),
@@ -61,12 +75,20 @@ export default function JobPostForm() {
     },
   });
 
+  const canPostJob = (freePosts ?? 0) > 0 || (purchasedPosts ?? 0) > 0;
+
   async function onSubmit(values: z.infer<typeof jobSchema>) {
-    if (!user) {
+    if (!user || !userProfile) {
       toast({ variant: "destructive", title: "Not Authenticated", description: "You must be logged in to post a job." });
       return;
     }
-    setIsLoading(true);
+
+    if (!canPostJob) {
+      toast({ variant: "destructive", title: "No Posts Remaining", description: "Please purchase more job posts." });
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       await addDoc(collection(db, "jobs"), {
         ...values,
@@ -74,9 +96,26 @@ export default function JobPostForm() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      toast({ title: "Job Posted!", description: "Your job listing is now live." });
+
+      // Decrement post count
+      const userDocRef = doc(db, "users", user.uid);
+      if ((freePosts ?? 0) > 0) {
+        await updateDoc(userDocRef, {
+          freePostsRemaining: increment(-1)
+        });
+        setFreePosts(prev => (prev ?? 0) - 1);
+        toast({ title: "Job Posted!", description: "Your job listing is now live. One free post used." });
+      } else if ((purchasedPosts ?? 0) > 0) {
+        await updateDoc(userDocRef, {
+          purchasedPostsRemaining: increment(-1)
+        });
+        setPurchasedPosts(prev => (prev ?? 0) - 1);
+        toast({ title: "Job Posted!", description: "Your job listing is now live. One purchased post used." });
+      }
+      
       form.reset();
-      router.push("/dashboard/my-jobs");
+      // No need to push to my-jobs, they are likely already there or will navigate.
+      // router.push("/dashboard/my-jobs"); 
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -84,8 +123,16 @@ export default function JobPostForm() {
         description: error.message || "Could not post job. Please try again.",
       });
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="flex justify-center items-center py-10">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      </div>
+    );
   }
 
   return (
@@ -95,122 +142,151 @@ export default function JobPostForm() {
         <CardDescription>Fill in the details below to create a new job listing.</CardDescription>
       </CardHeader>
       <CardContent>
+        <Alert variant={canPostJob ? "default" : "destructive"} className="mb-6 bg-muted/30">
+          <Info className="h-4 w-4" />
+          <AlertTitle>{canPostJob ? "Job Post Credits" : "Out of Job Posts"}</AlertTitle>
+          <AlertDescription>
+            {freePosts !== undefined && purchasedPosts !== undefined ? (
+              <>
+                You have <strong>{freePosts}</strong> free post(s) and <strong>{purchasedPosts}</strong> purchased post(s) remaining.
+                {!canPostJob && " Please purchase more to continue posting."}
+              </>
+            ) : (
+              "Loading post credit information..."
+            )}
+          </AlertDescription>
+        </Alert>
+
+        {!canPostJob && !authLoading && (
+          <div className="text-center my-8 p-6 border border-dashed rounded-md">
+            <h3 className="text-xl font-semibold mb-2">No Job Posts Left</h3>
+            <p className="text-muted-foreground mb-4">You've used all your available job posts. To post more jobs, please purchase additional credits.</p>
+            <Button 
+              onClick={() => toast({ title: "Coming Soon!", description: "Stripe integration for purchasing job posts is under development."})}
+              className="bg-accent hover:bg-accent/90 text-accent-foreground"
+            >
+              <ShoppingCart className="mr-2 h-5 w-5" /> Purchase Job Posts (10 EUR per post)
+            </Button>
+          </div>
+        )}
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            <FormField
-              control={form.control}
-              name="title"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Job Title</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., Senior Platform Engineer" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Job Description</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="Describe the role, responsibilities, and requirements..." {...field} rows={6} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <div className="grid md:grid-cols-2 gap-8">
+            <fieldset disabled={!canPostJob || isSubmitting || authLoading} className="space-y-8">
               <FormField
                 control={form.control}
-                name="platform"
+                name="title"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Platform/Technologies</FormLabel>
+                    <FormLabel>Job Title</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., Kubernetes, AWS, Terraform" {...field} />
-                    </FormControl>
-                    <FormDescription>Comma-separated list of key platforms or technologies.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="location"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Location</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., San Francisco, CA or Remote" {...field} />
+                      <Input placeholder="e.g., Senior Platform Engineer" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            </div>
-            <div className="grid md:grid-cols-2 gap-8">
               <FormField
                 control={form.control}
-                name="contractType"
+                name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Contract Type</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select contract type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {contractTypes.map(type => (
-                          <SelectItem key={type} value={type}>{type}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>Job Description</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Describe the role, responsibilities, and requirements..." {...field} rows={6} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="experienceLevel"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Experience Level</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <div className="grid md:grid-cols-2 gap-8">
+                <FormField
+                  control={form.control}
+                  name="platform"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Platform/Technologies</FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select experience level" />
-                        </SelectTrigger>
+                        <Input placeholder="e.g., Kubernetes, AWS, Terraform" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        {experienceLevels.map(level => (
-                          <SelectItem key={level} value={level}>{level}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-            <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground transition-transform hover:scale-105" disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Posting...
-                </>
-              ) : "Post Job"}
-            </Button>
+                      <FormDescription>Comma-separated list of key platforms or technologies.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="location"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Location</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., San Francisco, CA or Remote" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="grid md:grid-cols-2 gap-8">
+                <FormField
+                  control={form.control}
+                  name="contractType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Contract Type</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select contract type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {contractTypes.map(type => (
+                            <SelectItem key={type} value={type}>{type}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="experienceLevel"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Experience Level</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select experience level" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {experienceLevels.map(level => (
+                            <SelectItem key={level} value={level}>{level}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </fieldset>
+            {canPostJob && (
+              <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground transition-transform hover:scale-105" disabled={isSubmitting || authLoading || !canPostJob}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Posting...
+                  </>
+                ) : "Post Job"}
+              </Button>
+            )}
           </form>
         </Form>
       </CardContent>
     </Card>
   );
 }
-
-// Need to ensure Card, CardHeader, CardTitle, CardDescription, CardContent are imported from shadcn/ui
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
