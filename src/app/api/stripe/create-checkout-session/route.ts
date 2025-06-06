@@ -5,10 +5,12 @@ import Stripe from 'stripe';
 import { STRIPE_SECRET_KEY, STRIPE_JOB_POST_PRICE_ID } from '@/lib/stripeConfig';
 
 export async function POST(req: NextRequest) {
-  // Check if STRIPE_SECRET_KEY is loaded, which is now directly imported and should be a string if set
+  // Check if STRIPE_SECRET_KEY (from env NEXT_STRIPE_SECRET_KEY) is loaded and valid
   if (!STRIPE_SECRET_KEY) {
-    console.error('Stripe secret key (STRIPE_SECRET_KEY from config, derived from NEXT_STRIPE_SECRET_KEY env var) is not set or invalid. Cannot create Stripe client for checkout session.');
-    return NextResponse.json({ error: 'Server configuration error: Stripe secret key is missing or invalid.' }, { status: 500 });
+    console.error('Stripe API Error: STRIPE_SECRET_KEY is not set or invalid. This key is derived from the NEXT_STRIPE_SECRET_KEY environment variable. Cannot create Stripe client for checkout session.');
+    // Log the value received from stripeConfig to understand if it's undefined or an empty string after trim
+    console.error(`Value of STRIPE_SECRET_KEY received in API route: '${STRIPE_SECRET_KEY}' (Check server logs for stripeConfig.ts output)`);
+    return NextResponse.json({ error: 'Server configuration error: Stripe secret key is missing or invalid. Please contact support or the site administrator.' }, { status: 500 });
   }
 
   const stripe = new Stripe(STRIPE_SECRET_KEY);
@@ -27,8 +29,8 @@ export async function POST(req: NextRequest) {
     // Compare the received priceId with the one configured on the server (STRIPE_JOB_POST_PRICE_ID)
     // This ensures the client isn't trying to purchase an arbitrary product.
     if (priceId !== STRIPE_JOB_POST_PRICE_ID) {
-        console.warn(`Received priceId '${priceId}' does not match configured STRIPE_JOB_POST_PRICE_ID (derived from NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) '${STRIPE_JOB_POST_PRICE_ID}'. Check client-side (JobPostForm.tsx) and env (NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) configuration.`);
-        return NextResponse.json({ error: 'Invalid Price ID provided.' }, { status: 400 });
+        console.warn(`Stripe API Warning: Received priceId '${priceId}' does not match configured STRIPE_JOB_POST_PRICE_ID (derived from NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) which is '${STRIPE_JOB_POST_PRICE_ID}'. Check client-side (JobPostForm.tsx) and env (NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) configuration.`);
+        return NextResponse.json({ error: 'Invalid Price ID provided. Please refresh and try again.' }, { status: 400 });
     }
 
     const origin = req.headers.get('origin') || 'http://localhost:9002'; 
@@ -51,17 +53,19 @@ export async function POST(req: NextRequest) {
     });
 
     if (!session.id) {
+        console.error('Stripe API Error: Failed to create Stripe session - No session ID returned from Stripe.');
         throw new Error('Failed to create Stripe session: No session ID returned.');
     }
 
     return NextResponse.json({ sessionId: session.id });
 
   } catch (error: any) {
-    console.error('Stripe Checkout Session Error:', error);
+    console.error('Stripe Checkout Session Error in API route:', error);
     // Check if it's a Stripe specific error
     if (error instanceof Stripe.errors.StripeError) {
-        return NextResponse.json({ error: `Stripe Error: ${error.message}`, type: error.type }, { status: error.statusCode || 500 });
+        return NextResponse.json({ error: `Stripe API Error: ${error.message}`, type: error.type }, { status: error.statusCode || 500 });
     }
-    return NextResponse.json({ error: error.message || 'Failed to create Stripe session.' }, { status: 500 });
+    // For other errors, provide a generic message
+    return NextResponse.json({ error: error.message || 'Failed to create Stripe checkout session due to an unexpected server error.' }, { status: 500 });
   }
 }
