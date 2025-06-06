@@ -24,14 +24,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Loader2, Info, ShoppingCart, AlertTriangle } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
-import type { ContractType, ExperienceLevel, UserProfile } from "@/lib/types";
-import { useRouter } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import type { ContractType, ExperienceLevel } from "@/lib/types";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { STRIPE_PUBLISHABLE_KEY, STRIPE_JOB_POST_PRICE_ID, clientSideStripePublishableKeyPresent, clientSideStripePriceIdPresent } from "@/lib/stripeConfig"; 
 import getStripe from "@/lib/getStripe";
@@ -48,14 +48,14 @@ const jobSchema = z.object({
 const contractTypes: ContractType[] = ["Full-time", "Part-time", "Contract"];
 const experienceLevels: ExperienceLevel[] = ["Entry", "Mid", "Senior"];
 
-// const canInitializeStripeJs = !!STRIPE_PUBLISHABLE_KEY; // Replaced with clientSideStripePublishableKeyPresent
-
 export default function JobPostForm() {
   const { toast } = useToast();
-  const { user, userProfile, loading: authLoading } = useAuth();
+  const { user, userProfile, loading: authLoading, refreshUserProfile } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPurchasing, setIsPurchasing] = useState(false);
+  const [isFulfillingOrder, setIsFulfillingOrder] = useState(false);
   
   const [freePosts, setFreePosts] = useState<number | undefined>(undefined);
   const [purchasedPosts, setPurchasedPosts] = useState<number | undefined>(undefined);
@@ -66,6 +66,53 @@ export default function JobPostForm() {
       setPurchasedPosts(userProfile.purchasedPostsRemaining ?? 0);
     }
   }, [userProfile]);
+
+  // Effect to handle successful Stripe payment redirect
+  const handleStripeSuccessRedirect = useCallback(async () => {
+    const purchaseStatus = searchParams.get('purchase');
+    const sessionId = searchParams.get('session_id');
+
+    if (purchaseStatus === 'success' && sessionId && user && !isFulfillingOrder) {
+      setIsFulfillingOrder(true);
+      try {
+        const response = await fetch('/api/stripe/fulfill-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, userId: user.uid }),
+        });
+
+        if (response.ok) {
+          toast({
+            title: "Payment Successful!",
+            description: "Your job post credits have been updated.",
+          });
+          await refreshUserProfile(); 
+        } else {
+          const errorData = await response.json();
+          toast({
+            variant: "destructive",
+            title: "Order Fulfillment Failed",
+            description: errorData.error || "Could not update your job posts. Please contact support.",
+          });
+        }
+      } catch (error) {
+        console.error("Fulfill order client error:", error);
+        toast({
+          variant: "destructive",
+          title: "Fulfillment Error",
+          description: "An unexpected error occurred while updating your posts. Please contact support.",
+        });
+      } finally {
+        router.replace('/dashboard/post-job', { scroll: false });
+        setIsFulfillingOrder(false);
+      }
+    }
+  }, [searchParams, user, router, toast, refreshUserProfile, isFulfillingOrder]);
+
+  useEffect(() => {
+    handleStripeSuccessRedirect();
+  }, [handleStripeSuccessRedirect]);
+
 
   const form = useForm<z.infer<typeof jobSchema>>({
     resolver: zodResolver(jobSchema),
@@ -106,16 +153,13 @@ export default function JobPostForm() {
         await updateDoc(userDocRef, {
           freePostsRemaining: increment(-1)
         });
-        setFreePosts(prev => (prev ?? 0) - 1);
-        toast({ title: "Job Posted!", description: "Your job listing is now live. One free post used." });
       } else if ((purchasedPosts ?? 0) > 0) {
         await updateDoc(userDocRef, {
           purchasedPostsRemaining: increment(-1)
         });
-        setPurchasedPosts(prev => (prev ?? 0) - 1);
-        toast({ title: "Job Posted!", description: "Your job listing is now live. One purchased post used." });
       }
-      
+      await refreshUserProfile(); 
+      toast({ title: "Job Posted!", description: "Your job listing is now live." });
       form.reset();
       router.push('/dashboard/my-jobs'); 
     } catch (error: any) {
@@ -144,7 +188,7 @@ export default function JobPostForm() {
       return;
     }
     
-    if (!clientSideStripePriceIdPresent || !STRIPE_JOB_POST_PRICE_ID) { // Check both, STRIPE_JOB_POST_PRICE_ID is the actual value
+    if (!clientSideStripePriceIdPresent || !STRIPE_JOB_POST_PRICE_ID) {
         toast({
             variant: "destructive",
             title: "Configuration Error",
@@ -162,30 +206,16 @@ export default function JobPostForm() {
         headers: {
           'Content-Type': 'application/json',
         },
-        // STRIPE_JOB_POST_PRICE_ID from stripeConfig is guaranteed to be a string if clientSideStripePriceIdPresent is true
         body: JSON.stringify({ userId: user.uid, priceId: STRIPE_JOB_POST_PRICE_ID }), 
       });
 
       if (!response.ok) {
         let errorData = { message: `API request failed with status ${response.status}` };
-        const contentType = response.headers.get("content-type");
-        if (contentType && contentType.indexOf("application/json") !== -1) {
-          try {
+        try {
             const parsedError = await response.json();
             errorData.message = parsedError.error || parsedError.message || errorData.message;
-          } catch (e) {
-            console.error("Failed to parse JSON error response:", e);
-          }
-        } else {
-          const textError = await response.text();
-          console.error("API Error (HTML/Text Response):", textError);
-          errorData.message = `API returned non-JSON response. Status: ${response.status}.`;
-        }
-        toast({ 
-            variant: "destructive", 
-            title: "Checkout Creation Failed", 
-            description: errorData.message 
-        });
+        } catch (e) { /* Ignore if not JSON */ }
+        toast({ variant: "destructive", title: "Checkout Creation Failed", description: errorData.message });
         throw new Error(errorData.message); 
       }
 
@@ -199,7 +229,7 @@ export default function JobPostForm() {
       }
 
       const stripe = await getStripe();
-      if (!stripe) { // getStripe returns null if STRIPE_PUBLISHABLE_KEY is missing
+      if (!stripe) {
         toast({ variant: "destructive", title: "Stripe Error", description: "Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set." });
         throw new Error('Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.');
       }
@@ -208,26 +238,30 @@ export default function JobPostForm() {
 
       if (stripeJsError) {
         console.error("Stripe.js redirect error object:", stripeJsError);
+        if (stripeJsError.message?.includes("Failed to set a named property 'href' on 'Location'") || 
+            stripeJsError.message?.includes("navigation was blocked")) {
+            throw stripeJsError; 
+        }
         throw new Error(stripeJsError.message || "Stripe.js reported an error during redirect setup.");
       }
     } catch (error: any) {
       console.error("Purchase error or redirect exception:", error); 
+      const checkoutUrl = checkoutSessionId ? `https://checkout.stripe.com/c/pay/${checkoutSessionId}` : '';
 
-      if (checkoutSessionId && error.message && (error.message.includes("Failed to set a named property 'href' on 'Location'") || error.message.includes("navigation was blocked because it should not be allowed by the sandboxing flags"))) {
-        const checkoutUrl = `https://checkout.stripe.com/c/pay/${checkoutSessionId}`;
-        console.log(`Attempting to open Stripe Checkout in new tab: ${checkoutUrl}`); // Log for debugging
+      if (checkoutSessionId && error.message && (error.message.includes("Failed to set a named property 'href' on 'Location'") || error.message.includes("navigation was blocked"))) {
+        console.log(`Attempting to open Stripe Checkout in new tab: ${checkoutUrl}`);
         toast({
           variant: "warning",
           title: "Stripe Checkout: New Tab Needed",
-          description: `Automatic redirect to Stripe was blocked (common in embedded windows). We've tried to open Stripe Checkout in a new browser tab. URL: ${checkoutUrl}. Please check for it and complete your purchase. If no new tab appeared, check your browser's pop-up blocker.`,
-          duration: 20000, // Increased duration for visibility
+          description: `Automatic redirect to Stripe was blocked (this is common in embedded windows like Firebase Studio). We will attempt to open Stripe Checkout in a new browser tab. Please check for it and complete your purchase. If no new tab appeared, check your browser's pop-up blocker. URL: ${checkoutUrl}`,
+          duration: 20000,
         });
         const newWindow = window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
         if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
             toast({
                 variant: "destructive",
                 title: "Popup Blocker Active?",
-                description: `Opening Stripe Checkout (URL: ${checkoutUrl}) in a new tab failed. Your browser's pop-up blocker might have stopped it. Please temporarily disable your pop-up blocker for this site and try purchasing again.`,
+                description: `Opening Stripe Checkout (URL: ${checkoutUrl}) in a new tab failed. Your browser's pop-up blocker might have stopped it. Please temporarily disable your pop-up blocker for this site and try purchasing again, or copy the URL to open it manually.`,
                 duration: 20000, 
             });
         }
@@ -239,7 +273,7 @@ export default function JobPostForm() {
     }
   };
 
-  if (authLoading) {
+  if (authLoading && !userProfile && !searchParams.get('session_id')) { 
     return (
       <div className="flex justify-center items-center py-10">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -255,17 +289,19 @@ export default function JobPostForm() {
       </CardHeader>
       <CardContent>
         <Alert variant={canPostJobWithCredits ? "default" : "destructive"} className="mb-6 bg-muted/30">
-          <Info className="h-4 w-4" />
+          { isFulfillingOrder ? <Loader2 className="h-4 w-4 animate-spin" /> : <Info className="h-4 w-4" /> }
           <AlertTitle>{canPostJobWithCredits ? "Job Post Credits" : "Out of Job Posts"}</AlertTitle>
           <AlertDescription>
-            {freePosts !== undefined && purchasedPosts !== undefined ? (
-              <>
-                You have <strong>{freePosts}</strong> free post(s) and <strong>{purchasedPosts}</strong> purchased post(s) remaining.
-                {!canPostJobWithCredits && " Please purchase more to continue posting."}
-              </>
-            ) : (
-              "Loading post credit information..."
-            )}
+            {isFulfillingOrder ? "Processing your purchase..." : 
+              (freePosts !== undefined && purchasedPosts !== undefined ? (
+                <>
+                  You have <strong>{freePosts}</strong> free post(s) and <strong>{purchasedPosts}</strong> purchased post(s) remaining.
+                  {!canPostJobWithCredits && " Please purchase more to continue posting."}
+                </>
+              ) : (
+                authLoading ? "Loading post credit information..." : "Post credit information unavailable."
+              ))
+            }
           </AlertDescription>
         </Alert>
 
@@ -280,7 +316,7 @@ export default function JobPostForm() {
             </Alert>
         )}
 
-        {!canPostJobWithCredits && !authLoading && (
+        {!canPostJobWithCredits && !authLoading && !isFulfillingOrder && (
           <div className="text-center my-8 p-6 border border-dashed rounded-md bg-card">
             <h3 className="text-xl font-semibold mb-2 text-foreground">No Job Posts Left</h3>
             <p className="text-muted-foreground mb-4">You've used all your available job posts. To post more jobs, please purchase additional credits.</p>
@@ -310,7 +346,7 @@ export default function JobPostForm() {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            <fieldset disabled={!canPostJobWithCredits || isSubmitting || authLoading || isPurchasing} className="space-y-8">
+            <fieldset disabled={!canPostJobWithCredits || isSubmitting || authLoading || isPurchasing || isFulfillingOrder} className="space-y-8">
               <FormField
                 control={form.control}
                 name="title"
@@ -413,7 +449,7 @@ export default function JobPostForm() {
                 />
               </div>
             </fieldset>
-            {canPostJobWithCredits && ( 
+            {canPostJobWithCredits && !isFulfillingOrder && ( 
               <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground transition-transform hover:scale-105" disabled={isSubmitting || authLoading || isPurchasing}>
                 {isSubmitting ? (
                   <>
