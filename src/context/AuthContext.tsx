@@ -3,8 +3,8 @@
 
 import type { User as FirebaseUser } from 'firebase/auth';
 import { createContext, useContext, useEffect, useState } from 'react';
-import { auth as firebaseAuth, db as firebaseDb, firebaseSuccessfullyInitialized, googleProvider } from '@/lib/firebase';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth as firebaseAuth, db as firebaseDb, firebaseSuccessfullyInitialized } from '@/lib/firebase';
+import { doc, getDoc, setDoc, serverTimestamp, type Timestamp } from 'firebase/firestore'; // Added Timestamp
 import type { UserProfile } from '@/lib/types';
 
 interface AuthContextType {
@@ -29,31 +29,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(null);
       setUserProfile(null);
       setFirebaseInitializationError(true);
-      console.warn("AuthContext: Firebase not initialized correctly. Auth features will be disabled."); // Changed to console.warn
+      console.warn("AuthContext: Firebase not initialized correctly. Auth features will be disabled.");
       return; 
     }
     
     setFirebaseInitializationError(false);
 
-    if (firebaseAuth) {
+    if (firebaseAuth && firebaseDb) { // Ensure firebaseDb is also checked
       const unsubscribe = firebaseAuth.onAuthStateChanged(async (currentFirebaseUser) => {
         setLoading(true);
         if (currentFirebaseUser) {
           setUser(currentFirebaseUser);
-          const userDocRef = doc(firebaseDb!, 'users', currentFirebaseUser.uid); // firebaseDb should be defined if firebaseSuccessfullyInitialized is true
-          const userDocSnap = await getDoc(userDocRef);
-          if (userDocSnap.exists()) {
-            setUserProfile(userDocSnap.data() as UserProfile);
-          } else {
-            const newUserProfile: UserProfile = {
-              uid: currentFirebaseUser.uid,
-              email: currentFirebaseUser.email,
-              displayName: currentFirebaseUser.displayName,
-              role: 'recruiter', 
-              createdAt: serverTimestamp() as any,
-            };
-            await setDoc(userDocRef, newUserProfile);
-            setUserProfile(newUserProfile);
+          const userDocRef = doc(firebaseDb, 'users', currentFirebaseUser.uid);
+          try {
+            const userDocSnap = await getDoc(userDocRef);
+            if (userDocSnap.exists()) {
+              setUserProfile(userDocSnap.data() as UserProfile);
+            } else {
+              // If profile doesn't exist in Firestore, set userProfile to null.
+              // The signup flow (AuthForm) is responsible for creating the initial profile.
+              // If an authenticated user has no profile, it's an issue to be handled.
+              console.warn(`User profile for ${currentFirebaseUser.uid} not found in Firestore. Setting userProfile to null.`);
+              setUserProfile(null);
+            }
+          } catch (error) {
+            console.error("Error fetching user profile in AuthContext:", error);
+            setUserProfile(null); // Set to null on error
           }
         } else {
           setUser(null);
@@ -63,12 +64,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       });
       return () => unsubscribe();
     } else {
-      // Fallback if firebaseAuth is somehow null despite firebaseSuccessfullyInitialized being true
       setLoading(false);
       setUser(null);
       setUserProfile(null);
-      setFirebaseInitializationError(true); // Mark as error if auth object is missing
-      console.warn("AuthContext: Firebase auth object is missing even after successful initialization flag. Auth features disabled."); // Changed to console.warn
+      setFirebaseInitializationError(true);
+      console.warn("AuthContext: Firebase auth or db object is missing. Auth features disabled.");
     }
   }, []);
 
@@ -80,22 +80,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUserProfile(null);
       return;
     }
-    setLoading(true); // Ensure loading state is managed during logout
+    setLoading(true);
     try {
       await firebaseAuth.signOut();
       setUser(null);
       setUserProfile(null);
     } catch (error) {
-      console.error("Error during logout:", error); // Kept as error for actual operational errors
-      // Optionally, inform the user about the logout error
+      console.error("Error during logout:", error);
     } finally {
       setLoading(false);
     }
   };
   
+  // This function is not currently used but kept for potential future use (e.g. admin role setting)
   const fetchSetUserProfile = async (currentFirebaseUser: FirebaseUser, role: 'recruiter' | 'candidate' = 'recruiter') => {
     if (!firebaseSuccessfullyInitialized || !firebaseDb) {
-        console.warn("Cannot fetch/set user profile: Firebase DB not initialized."); // Changed to console.warn
+        console.warn("Cannot fetch/set user profile: Firebase DB not initialized.");
         return null;
     }
     const userDocRef = doc(firebaseDb, 'users', currentFirebaseUser.uid);
@@ -110,7 +110,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             email: currentFirebaseUser.email,
             displayName: currentFirebaseUser.displayName,
             role,
-            createdAt: serverTimestamp() as any,
+            createdAt: serverTimestamp() as Timestamp, // Ensured Timestamp type
         };
         await setDoc(userDocRef, profileData);
     }
@@ -126,8 +126,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-// useAuth hook remains the same as it's defined in a separate file (src/hooks/useAuth.ts)
-// and just re-exports this context's consumer.
 export const useAuthInternal = (): AuthContextType => { 
   const context = useContext(AuthContext);
   if (context === undefined) {
@@ -136,6 +134,4 @@ export const useAuthInternal = (): AuthContextType => {
   return context;
 };
 
-// Ensure AuthContext.tsx exports 'useAuth' for wider compatibility as per original structure.
-// This will be re-exported by src/hooks/useAuth.ts
 export const useAuth = useAuthInternal;
