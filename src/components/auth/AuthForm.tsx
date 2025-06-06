@@ -17,8 +17,8 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, UserCredential } from "firebase/auth";
-import { auth as firebaseAuth, db as firebaseDb, googleProvider, firebaseSuccessfullyInitialized } from "@/lib/firebase"; // Import firebaseSuccessfullyInitialized
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, type UserCredential } from "firebase/auth";
+import { auth as firebaseAuth, db as firebaseDb, firebaseSuccessfullyInitialized } from "@/lib/firebase"; 
 import { doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import type { UserProfile } from "@/lib/types";
@@ -37,9 +37,8 @@ interface AuthFormProps {
 export default function AuthForm({ isSignUp = false }: AuthFormProps) {
   const { toast } = useToast();
   const router = useRouter();
-  const { firebaseInitializationError } = useAuth(); // Get error state from context
+  const { firebaseInitializationError } = useAuth(); 
   const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -84,41 +83,6 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
       });
     } finally {
       setIsLoading(false);
-    }
-  }
-
-  async function handleGoogleSignIn() {
-    if (!firebaseSuccessfullyInitialized || !firebaseAuth || !firebaseDb || !googleProvider) {
-      toast({ variant: "destructive", title: "Configuration Error", description: "Firebase is not configured. Cannot sign in with Google." });
-      return;
-    }
-    setIsGoogleLoading(true);
-    try {
-      const result = await signInWithPopup(firebaseAuth, googleProvider);
-      const user = result.user;
-      const userDocRef = doc(firebaseDb, "users", user.uid);
-      const userDocSnap = await getDoc(userDocRef);
-
-      if (!userDocSnap.exists()) {
-        const newUserProfile: UserProfile = {
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName,
-            role: 'recruiter', 
-            createdAt: serverTimestamp() as any,
-        };
-        await setDoc(userDocRef, newUserProfile);
-      }
-      toast({ title: "Signed In with Google", description: "Welcome!" });
-      router.push("/dashboard");
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Google Sign-In Error",
-        description: error.message || "Could not sign in with Google.",
-      });
-    } finally {
-      setIsGoogleLoading(false);
     }
   }
 
@@ -169,29 +133,12 @@ export default function AuthForm({ isSignUp = false }: AuthFormProps) {
               </FormItem>
             )}
           />
-          <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground transition-transform hover:scale-105" disabled={isLoading || isGoogleLoading}>
+          <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground transition-transform hover:scale-105" disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {isSignUp ? "Sign Up" : "Login"}
           </Button>
         </form>
       </Form>
-      <div className="mt-6 relative">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-2 text-muted-foreground">
-            Or continue with
-          </span>
-        </div>
-      </div>
-      <Button variant="outline" className="w-full mt-6 transition-transform hover:scale-105" onClick={handleGoogleSignIn} disabled={isLoading || isGoogleLoading}>
-        {isGoogleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 
-        <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512"><path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"></path></svg>
-        }
-        Google
-      </Button>
     </div>
   );
 }
-
