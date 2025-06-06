@@ -29,7 +29,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(null);
       setUserProfile(null);
       setFirebaseInitializationError(true);
-      console.error("AuthContext: Firebase not initialized correctly. Auth features will be disabled.");
+      console.warn("AuthContext: Firebase not initialized correctly. Auth features will be disabled."); // Changed to console.warn
       return; 
     }
     
@@ -68,7 +68,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(null);
       setUserProfile(null);
       setFirebaseInitializationError(true); // Mark as error if auth object is missing
-      console.error("AuthContext: Firebase auth object is missing even after successful initialization flag. Auth features disabled.");
+      console.warn("AuthContext: Firebase auth object is missing even after successful initialization flag. Auth features disabled."); // Changed to console.warn
     }
   }, []);
 
@@ -86,7 +86,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(null);
       setUserProfile(null);
     } catch (error) {
-      console.error("Error during logout:", error);
+      console.error("Error during logout:", error); // Kept as error for actual operational errors
       // Optionally, inform the user about the logout error
     } finally {
       setLoading(false);
@@ -95,7 +95,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   
   const fetchSetUserProfile = async (currentFirebaseUser: FirebaseUser, role: 'recruiter' | 'candidate' = 'recruiter') => {
     if (!firebaseSuccessfullyInitialized || !firebaseDb) {
-        console.error("Cannot fetch/set user profile: Firebase DB not initialized.");
+        console.warn("Cannot fetch/set user profile: Firebase DB not initialized."); // Changed to console.warn
         return null;
     }
     const userDocRef = doc(firebaseDb, 'users', currentFirebaseUser.uid);
@@ -128,7 +128,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
 // useAuth hook remains the same as it's defined in a separate file (src/hooks/useAuth.ts)
 // and just re-exports this context's consumer.
-export const useAuthInternal = (): AuthContextType => { // Renamed to avoid conflict if useAuth is imported elsewhere
+export const useAuthInternal = (): AuthContextType => { 
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuthInternal must be used within an AuthProvider');
@@ -136,3 +136,6 @@ export const useAuthInternal = (): AuthContextType => { // Renamed to avoid conf
   return context;
 };
 
+// Ensure AuthContext.tsx exports 'useAuth' for wider compatibility as per original structure.
+// This will be re-exported by src/hooks/useAuth.ts
+export const useAuth = useAuthInternal;

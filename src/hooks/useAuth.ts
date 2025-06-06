@@ -8,7 +8,7 @@
 // and this file will just re-export it. So AuthContext.tsx should export useAuth.
 // Reverting AuthContext.tsx's hook export name to useAuth.
 
-export { useAuthInternal as useAuth } from '@/context/AuthContext';
+export { useAuth } from '@/context/AuthContext';
 // If AuthContext.tsx exports useAuth, then:
 // export { useAuth } from '@/context/AuthContext'; -> This is what was there.
 // Let's stick to the original pattern and ensure AuthContext.tsx exports 'useAuth'.
