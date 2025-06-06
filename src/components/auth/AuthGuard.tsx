@@ -38,10 +38,7 @@ export default function AuthGuard({ children, allowedRoles = ['recruiter'] }: Au
         };
         performLogout();
       } else if (userProfile) {
-        if (typeof userProfile.role === 'string' && !allowedRoles.includes(userProfile.role)) {
-          toast({ variant: "destructive", title: "Access Denied", description: "You do not have permission to view this page." });
-          router.replace('/');
-        } else if (typeof userProfile.role === 'undefined') {
+        if (typeof userProfile.role === 'undefined') {
           // Role is missing from the profile object
           toast({
             variant: "destructive",
@@ -53,6 +50,13 @@ export default function AuthGuard({ children, allowedRoles = ['recruiter'] }: Au
             router.replace('/login');
           };
           performLogout();
+        } else if (typeof userProfile.role === 'string' && !allowedRoles.includes(userProfile.role)) {
+          toast({
+            variant: "destructive",
+            title: "Access Denied",
+            description: `You do not have permission to view this page. Your role: '${userProfile.role}'. Required: '${allowedRoles.join("', '")}'.`
+          });
+          router.replace('/'); // Or a more appropriate redirect like /login or candidate-specific denied page
         }
         // If role is valid and in allowedRoles, access is implicitly granted by reaching the render stage
       }
@@ -87,9 +91,11 @@ export default function AuthGuard({ children, allowedRoles = ['recruiter'] }: Au
   }
 
   // Fallback: Show loader while useEffect processes and redirects or determines access.
+  // This state should ideally be brief or covered by the conditions above.
   return (
     <div className="flex justify-center items-center h-screen">
       <Loader2 className="h-12 w-12 animate-spin text-primary" />
     </div>
   );
 }
+
