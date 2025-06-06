@@ -165,7 +165,7 @@ export default function JobPostForm() {
               onClick={() => toast({ title: "Coming Soon!", description: "Stripe integration for purchasing job posts is under development."})}
               className="bg-accent hover:bg-accent/90 text-accent-foreground"
             >
-              <ShoppingCart className="mr-2 h-5 w-5" /> Purchase Job Posts (10 EUR per post)
+              <ShoppingCart className="mr-2 h-5 w-5" /> Purchase Job Posts (5 EUR per post)
             </Button>
           </div>
         )}

@@ -11,7 +11,7 @@ export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 // This should NOT be prefixed with NEXT_PUBLIC_
 export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
-// Stripe Price ID for the "Job Post" product (e.g., 10 EUR per post)
+// Stripe Price ID for the "Job Post" product (e.g., 5 EUR per post)
 // This can be public if needed on the client to initiate checkout
 export const STRIPE_JOB_POST_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_JOB_POST_PRICE_ID;
 
