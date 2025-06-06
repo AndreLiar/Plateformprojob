@@ -2,11 +2,11 @@
 // src/app/api/stripe/create-checkout-session/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import Stripe from 'stripe';
-import { STRIPE_SECRET_KEY, STRIPE_JOB_POST_PRICE_ID } from '@/lib/stripeConfig'; // Ensure this matches export
+import { STRIPE_SECRET_KEY, STRIPE_JOB_POST_PRICE_ID } from '@/lib/stripeConfig';
 
 export async function POST(req: NextRequest) {
   if (!STRIPE_SECRET_KEY) {
-    console.error('Stripe API Error: Stripe secret key is not available from configuration (STRIPE_SECRET_KEY from stripeConfig.ts). This key is derived from the NEXT_STRIPE_SECRET_KEY environment variable. Cannot create Stripe client for checkout session.');
+    console.error('Stripe API Error: Stripe secret key (STRIPE_SECRET_KEY from stripeConfig) is not available. This key is derived from the NEXT_STRIPE_SECRET_KEY environment variable. Cannot create Stripe client for checkout session.');
     return NextResponse.json({ error: 'Server configuration error: Stripe secret key is missing or invalid. Please contact support or the site administrator.' }, { status: 500 });
   }
 
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid Price ID provided. Please refresh and try again.' }, { status: 400 });
     }
 
-    const origin = req.headers.get('origin') || 'http://localhost:9002'; 
+    const origin = req.headers.get('origin') || 'http://localhost:9002'; // Adjust if your dev port is different
     
     const successUrl = `${origin}/dashboard/post-job?session_id={CHECKOUT_SESSION_ID}&purchase=success`;
     const cancelUrl = `${origin}/dashboard/post-job?purchase=cancelled`;
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       mode: 'payment',
       success_url: successUrl,
       cancel_url: cancelUrl,
-      client_reference_id: userId, 
+      client_reference_id: userId, // Store userId for webhook processing
     });
 
     if (!session.id) {
