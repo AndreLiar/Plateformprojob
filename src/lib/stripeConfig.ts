@@ -18,13 +18,14 @@ const rawWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 export const STRIPE_WEBHOOK_SECRET = rawWebhookSecret?.trim();
 console.log(`[Stripe Config] STRIPE_WEBHOOK_SECRET: RawIsSet='${!!rawWebhookSecret}', RawType='${typeof rawWebhookSecret}', TrimmedIsSet='${!!STRIPE_WEBHOOK_SECRET}' (Required for webhook processing)`);
 
-// Stripe Price ID for the "Job Post" product - Still needed for initiating purchases
-const rawJobPostPriceId = process.env.NEXT_PUBLIC_STRIPE_JOB_POST_PRICE_ID;
+// Stripe Price ID for the "Job Post" product (e.g., 5 EUR per post)
+// Updated to check STRIPE_PRICE_PREMIUM as per user's .env.local
+const rawJobPostPriceId = process.env.STRIPE_PRICE_PREMIUM; // CHANGED HERE
 export const STRIPE_JOB_POST_PRICE_ID = rawJobPostPriceId?.trim();
-console.log(`[Stripe Config] NEXT_PUBLIC_STRIPE_JOB_POST_PRICE_ID: RawValue='${rawJobPostPriceId || "Not set (raw)"}', Type='${typeof rawJobPostPriceId}', TrimmedValue='${STRIPE_JOB_POST_PRICE_ID || "Not set (trimmed)"}' (Required for creating checkout sessions)`);
+console.log(`[Stripe Config] STRIPE_PRICE_PREMIUM (for Job Post Price ID): RawValue='${rawJobPostPriceId || "Not set (raw)"}', Type='${typeof rawJobPostPriceId}', TrimmedValue='${STRIPE_JOB_POST_PRICE_ID || "Not set (trimmed)"}' (Required for creating checkout sessions)`);
 
 // A boolean to check if basic Stripe client-side/API interaction can be initialized
-// The purchase button will be enabled if these two are present.
+// This flag now only checks for Publishable and Secret keys to enable the button.
 // Full functionality (checkout & webhook processing) requires all four keys.
 export const stripeSuccessfullyInitialized =
   !!STRIPE_PUBLISHABLE_KEY &&
@@ -37,29 +38,37 @@ if (!stripeSuccessfullyInitialized) {
   if (!STRIPE_PUBLISHABLE_KEY) missingKeys.push("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY (is empty or missing after trim)");
   if (!STRIPE_SECRET_KEY) missingKeys.push("STRIPE_SECRET_KEY (is empty or missing after trim)");
   
-  const message = `[Stripe Config] Basic Stripe configuration is INCOMPLETE. One or more required environment variables for core functionality are missing, empty, or consist only of whitespace: [${missingKeys.join(', ')}]. Stripe purchase button will be disabled.`;
+  const message = `[Stripe Config] Basic Stripe configuration is INCOMPLETE. One or more required environment variables for core functionality (enabling purchase button) are missing, empty, or consist only of whitespace: [${missingKeys.join(', ')}]. Stripe purchase button will be disabled.`;
   console.warn(message);
 } else {
-  console.log("[Stripe Config] Basic Stripe configuration (Publishable and Secret keys) appears COMPLETE.");
+  console.log("[Stripe Config] Basic Stripe configuration (Publishable and Secret keys) for enabling purchase button appears COMPLETE.");
+  // Warnings for other keys needed for full functionality
   if (!STRIPE_JOB_POST_PRICE_ID) {
-    console.warn("[Stripe Config] WARNING: NEXT_PUBLIC_STRIPE_JOB_POST_PRICE_ID is missing. Users will not be able to complete purchases.");
+    console.warn("[Stripe Config] WARNING: STRIPE_PRICE_PREMIUM (for Job Post Price ID) is missing. Users will not be able to complete purchases for job posts.");
   }
   if (!STRIPE_WEBHOOK_SECRET) {
     console.warn("[Stripe Config] WARNING: STRIPE_WEBHOOK_SECRET is missing. Payment confirmation and post crediting via webhooks will fail.");
   }
 }
 
-if (!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || !process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET || !process.env.NEXT_PUBLIC_STRIPE_JOB_POST_PRICE_ID) {
-    console.warn("[Stripe Config] === PLEASE VERIFY your .env.local file and RESTART the Next.js server if any Stripe keys are reported missing or if functionality is not as expected. ===");
+// Diagnostic printout for all expected env vars for Stripe
+const allStripeVarsPresentForFullFunctionality = 
+    !!STRIPE_PUBLISHABLE_KEY &&
+    !!STRIPE_SECRET_KEY &&
+    !!STRIPE_WEBHOOK_SECRET &&
+    !!STRIPE_JOB_POST_PRICE_ID;
+
+if (!allStripeVarsPresentForFullFunctionality) {
+    console.warn("[Stripe Config] === PLEASE VERIFY your .env.local file and RESTART the Next.js server if any Stripe keys are reported missing for *full functionality* or if functionality is not as expected. ===");
     console.warn("[Stripe Config] Check that the variable names are EXACTLY correct and that they have non-empty values.");
-    console.warn("[Stripe Config] Values Next.js is seeing from process.env (raw, before trim):");
+    console.warn("[Stripe Config] Variables the application is trying to use (raw values from process.env, before trim):");
     console.warn(`  - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY (raw): ${process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'NOT FOUND IN process.env'}`);
     console.warn(`  - STRIPE_SECRET_KEY (raw): ${process.env.STRIPE_SECRET_KEY ? 'FOUND (value hidden for security)' : 'NOT FOUND IN process.env'}`);
     console.warn(`  - STRIPE_WEBHOOK_SECRET (raw): ${process.env.STRIPE_WEBHOOK_SECRET ? 'FOUND (value hidden for security)' : 'NOT FOUND IN process.env'}`);
-    console.warn(`  - NEXT_PUBLIC_STRIPE_JOB_POST_PRICE_ID (raw): ${process.env.NEXT_PUBLIC_STRIPE_JOB_POST_PRICE_ID || 'NOT FOUND IN process.env'}`);
+    console.warn(`  - STRIPE_PRICE_PREMIUM (for Job Post Price ID) (raw): ${process.env.STRIPE_PRICE_PREMIUM || 'NOT FOUND IN process.env'}`);
     console.warn("[Stripe Config] === End of diagnostic printout ===");
 } else {
-    console.log("[Stripe Config] All four Stripe-related environment variables appear to be present in process.env.");
+    console.log("[Stripe Config] All four Stripe-related environment variables for full functionality appear to be present in process.env and trimmed correctly.");
 }
 console.log("--- End Stripe Configuration Check (Server-Side) ---");
 
