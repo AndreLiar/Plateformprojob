@@ -2,20 +2,15 @@
 // src/app/api/stripe/create-checkout-session/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import Stripe from 'stripe';
-import { STRIPE_SECRET_KEY, STRIPE_JOB_POST_PRICE_ID } from '@/lib/stripeConfig';
-
-// Removed top-level Stripe client initialization:
-// if (!STRIPE_SECRET_KEY) {
-//   throw new Error('Stripe secret key is not set in environment variables.');
-// }
-// const stripe = new Stripe(STRIPE_SECRET_KEY);
+import { STRIPE_SECRET_KEY, STRIPE_JOB_POST_PRICE_ID } from '@/lib/stripeConfig'; // Import STRIPE_SECRET_KEY directly
 
 export async function POST(req: NextRequest) {
+  // STRIPE_SECRET_KEY is now imported directly from stripeConfig
   if (!STRIPE_SECRET_KEY) {
-    console.error('Stripe secret key is not set. Cannot create Stripe client for checkout session.');
-    return NextResponse.json({ error: 'Server configuration error: Stripe secret key is missing.' }, { status: 500 });
+    console.error('Stripe secret key (STRIPE_SECRET_KEY from config) is not set or invalid. Cannot create Stripe client for checkout session.');
+    return NextResponse.json({ error: 'Server configuration error: Stripe secret key is missing or invalid.' }, { status: 500 });
   }
-  // Initialize Stripe client inside the handler
+  // Initialize Stripe client inside the handler using the imported STRIPE_SECRET_KEY
   const stripe = new Stripe(STRIPE_SECRET_KEY);
 
   try {
@@ -28,8 +23,11 @@ export async function POST(req: NextRequest) {
     if (!priceId) {
         return NextResponse.json({ error: 'Price ID is required.' }, { status: 400 });
     }
+    // STRIPE_JOB_POST_PRICE_ID is imported and used for validation
     if (priceId !== STRIPE_JOB_POST_PRICE_ID) {
         console.warn(`Received priceId ${priceId} does not match configured STRIPE_JOB_POST_PRICE_ID ${STRIPE_JOB_POST_PRICE_ID}`);
+        // Depending on policy, you might want to return an error here or proceed if priceId is otherwise valid.
+        // For now, we'll proceed but log a warning.
     }
 
     const origin = req.headers.get('origin') || 'http://localhost:9002'; 
@@ -41,14 +39,14 @@ export async function POST(req: NextRequest) {
       payment_method_types: ['card'],
       line_items: [
         {
-          price: priceId,
+          price: priceId, // Use the priceId received from the client
           quantity: 1,
         },
       ],
       mode: 'payment',
       success_url: successUrl,
       cancel_url: cancelUrl,
-      client_reference_id: userId,
+      client_reference_id: userId, // Store userId for webhook processing
     });
 
     if (!session.id) {
@@ -59,6 +57,10 @@ export async function POST(req: NextRequest) {
 
   } catch (error: any) {
     console.error('Stripe Checkout Session Error:', error);
+    // Check if it's a Stripe specific error
+    if (error instanceof Stripe.errors.StripeError) {
+        return NextResponse.json({ error: `Stripe Error: ${error.message}`, type: error.type }, { status: error.statusCode || 500 });
+    }
     return NextResponse.json({ error: error.message || 'Failed to create Stripe session.' }, { status: 500 });
   }
 }
