@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import { Loader2, Info, ShoppingCart, AlertTriangle } from "lucide-react"; // Added AlertTriangle
+import { Loader2, Info, ShoppingCart, AlertTriangle } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
@@ -131,9 +131,20 @@ export default function JobPostForm() {
       toast({ variant: "destructive", title: "Not Authenticated", description: "You must be logged in to purchase posts." });
       return;
     }
-    if (!stripeSuccessfullyInitialized || !STRIPE_JOB_POST_PRICE_ID) {
-      toast({ variant: "destructive", title: "Configuration Error", description: "Stripe is not configured correctly. Cannot proceed with purchase." });
+
+    // stripeSuccessfullyInitialized now checks for Publishable and Secret keys.
+    // STRIPE_JOB_POST_PRICE_ID is checked here because it's vital for this specific action.
+    if (!stripeSuccessfullyInitialized) {
+      toast({ variant: "destructive", title: "Configuration Error", description: "Core Stripe keys (Publishable or Secret) are missing. Cannot proceed with purchase." });
       return;
+    }
+    if (!STRIPE_JOB_POST_PRICE_ID) {
+        toast({
+            variant: "destructive",
+            title: "Configuration Error",
+            description: "Stripe Price ID for job posts is not configured. Please contact the site administrator.",
+        });
+        return;
     }
 
     setIsPurchasing(true);
@@ -154,7 +165,7 @@ export default function JobPostForm() {
       const { sessionId } = await response.json();
       const stripe = await getStripe();
 
-      if (!stripe) {
+      if (!stripe) { // This implies STRIPE_PUBLISHABLE_KEY was missing, caught by stripeSuccessfullyInitialized already
         throw new Error('Stripe.js failed to load.');
       }
 
@@ -206,30 +217,28 @@ export default function JobPostForm() {
             <h3 className="text-xl font-semibold mb-2 text-foreground">No Job Posts Left</h3>
             <p className="text-muted-foreground mb-4">You've used all your available job posts. To post more jobs, please purchase additional credits.</p>
             
+            {/* This alert shows if the very basic Stripe keys are missing */}
             {!stripeSuccessfullyInitialized && (
                 <Alert variant="destructive" className="mb-4 text-left">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Stripe Configuration Incomplete</AlertTitle>
                     <AlertDescription>
-                        The payment system is not fully configured by the site administrator.
-                        The purchase button is disabled. Please check server logs for details on missing Stripe environment variables.
+                        The payment system's core keys are not fully configured by the site administrator.
+                        The purchase button is disabled. Please check server logs for details on missing Stripe environment variables (Publishable or Secret Key).
                     </AlertDescription>
                 </Alert>
             )}
             
             <Button 
               onClick={handlePurchase}
-              disabled={isPurchasing || !stripeSuccessfullyInitialized}
+              disabled={isPurchasing || !stripeSuccessfullyInitialized} // Button disabled if core keys missing
               className="bg-accent hover:bg-accent/90 text-accent-foreground"
               aria-disabled={!stripeSuccessfullyInitialized}
             >
               {isPurchasing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ShoppingCart className="mr-2 h-5 w-5" />}
               Purchase Job Posts (5 EUR per post)
             </Button>
-            {/* The following less prominent message is now part of the Alert above if Stripe isn't initialized.
-                We can remove it if the Alert is sufficient, or keep for redundancy.
-                The Alert is now the primary indicator for why the button is disabled due to Stripe config.
-            */}
+            {/* A further warning if Price ID is missing but button is enabled will be handled by a toast on click */}
           </div>
         )}
 
@@ -353,5 +362,3 @@ export default function JobPostForm() {
     </Card>
   );
 }
-
-    
