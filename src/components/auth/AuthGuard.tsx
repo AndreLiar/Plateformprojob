@@ -2,84 +2,99 @@
 "use client";
 
 import { useAuth } from '@/hooks/useAuth';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react'; // Added useState
+import { useRouter, usePathname } from 'next/navigation'; // Added usePathname
+import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import type { UserProfile } from '@/lib/types'; // For role type
 
 interface AuthGuardProps {
   children: React.ReactNode;
   allowedRoles?: Array<'recruiter' | 'candidate'>;
+  /**
+   * If the user's role matches a key in this object,
+   * and the current pathname starts with one of the corresponding string prefixes,
+   * this AuthGuard will permit access, deferring to a potentially more specific
+   * AuthGuard in a nested layout.
+   * Example: { candidate: ['/dashboard/candidate'] }
+   */
+  delegateAuthToNestedLayout?: Partial<Record<UserProfile['role'], string[]>>;
 }
 
-export default function AuthGuard({ children, allowedRoles = ['recruiter'] }: AuthGuardProps) {
+export default function AuthGuard({ children, allowedRoles = ['recruiter'], delegateAuthToNestedLayout }: AuthGuardProps) {
   const { user, userProfile, loading: authLoading, firebaseInitializationError, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname(); // Get current pathname
   const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState(false);
 
   useEffect(() => {
-    // Reset redirecting state if authLoading or firebaseInitializationError changes,
-    // or if user/userProfile changes significantly (e.g., logout)
-    setIsRedirecting(false);
+    // No need to reset isRedirecting here, as it's set only when a redirect occurs.
+    // It should be true only during the redirection process.
 
     if (firebaseInitializationError || authLoading) {
-      // Still waiting for Firebase to init or auth state to load
-      return;
+      return; // Wait for Firebase init or auth state
     }
 
     if (!user) {
-      // No user, definitely redirect to login
-      router.replace('/login');
-      setIsRedirecting(true);
+      if (pathname !== '/login' && pathname !== '/signup') { // Avoid redirect loop if already on auth pages
+        router.replace('/login');
+        setIsRedirecting(true);
+      }
       return;
     }
 
-    // User is authenticated, check profile
     if (!userProfile) {
-      // User is authenticated, but profile is not loaded/found in Firestore.
-      // This could be a transient state if authLoading just turned false,
-      // but if it persists, it's an issue.
       toast({
         variant: "destructive",
         title: "Profile Issue",
         description: "Your user profile could not be loaded. Logging out."
       });
-      const performLogout = async () => {
-        await logout();
-        // No explicit redirect here, relying on auth state change to trigger the !user block
-      };
-      performLogout();
-      setIsRedirecting(true); // Indicate redirection is happening due to logout
+      logout().finally(() => { // Ensure logout completes before redirect
+        router.replace('/login');
+        setIsRedirecting(true);
+      });
       return;
     }
 
-    // User and userProfile are available, and authLoading is false.
     if (typeof userProfile.role === 'undefined') {
       toast({
         variant: "destructive",
         title: "Profile Issue",
         description: "User role is not defined. Logging out."
       });
-      const performLogout = async () => {
-        await logout();
-      };
-      performLogout();
-      setIsRedirecting(true);
+      logout().finally(() => {
+        router.replace('/login');
+        setIsRedirecting(true);
+      });
       return;
     }
 
-    if (typeof userProfile.role === 'string' && !allowedRoles.includes(userProfile.role)) {
-      const actualRole = userProfile.role;
+    const currentRole = userProfile.role;
+
+    // Delegation Check: If current role and path match a delegation rule, allow access.
+    if (delegateAuthToNestedLayout && delegateAuthToNestedLayout[currentRole]) {
+      const prefixesToDelegate = delegateAuthToNestedLayout[currentRole]!;
+      for (const prefix of prefixesToDelegate) {
+        if (pathname.startsWith(prefix)) {
+          setIsRedirecting(false); // Access is delegated, not redirecting.
+          return; // Allow children to render, nested guard will handle.
+        }
+      }
+    }
+
+    // Strict Role Check for this guard's segment (if not delegated)
+    if (!allowedRoles.includes(currentRole)) {
       toast({
         variant: "destructive",
         title: "Access Denied",
-        description: `Redirecting... Your role: '${actualRole}'. Required: '${allowedRoles.join("', '")}'.`
+        description: `Redirecting... Your role: '${currentRole}'. Required: '${allowedRoles.join("', '")}'. Path: ${pathname}`
       });
 
-      if (actualRole === 'candidate') {
+      // Redirect to appropriate dashboard or home
+      if (currentRole === 'candidate') {
         router.replace('/dashboard/candidate/profile');
-      } else if (actualRole === 'recruiter') {
+      } else if (currentRole === 'recruiter') {
         router.replace('/dashboard');
       } else {
         router.replace('/');
@@ -88,10 +103,11 @@ export default function AuthGuard({ children, allowedRoles = ['recruiter'] }: Au
       return;
     }
 
-    // If all checks pass and no redirect was needed, ensure isRedirecting is false.
-    // This is mostly handled by the reset at the beginning of useEffect.
+    // If all checks pass for this guard (role allowed or delegated and no other issues)
+    setIsRedirecting(false);
 
-  }, [user, userProfile, authLoading, router, allowedRoles, firebaseInitializationError, toast, logout]);
+  }, [user, userProfile, authLoading, router, allowedRoles, delegateAuthToNestedLayout, pathname, firebaseInitializationError, toast, logout]);
+
 
   if (firebaseInitializationError) {
     return (
@@ -107,7 +123,6 @@ export default function AuthGuard({ children, allowedRoles = ['recruiter'] }: Au
     );
   }
 
-  // Show loader if auth is loading OR if the guard has initiated a redirect.
   if (authLoading || isRedirecting) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -116,14 +131,16 @@ export default function AuthGuard({ children, allowedRoles = ['recruiter'] }: Au
     );
   }
 
-  // If user is authenticated, profile is loaded, role is correct, and not redirecting:
-  if (user && userProfile && typeof userProfile.role === 'string' && allowedRoles.includes(userProfile.role)) {
-    return <>{children}</>;
+  // If not loading, not redirecting, and useEffect determined access is granted (or delegated)
+  // Render children only if user and profile are loaded and checks passed.
+  // The checks in useEffect (setting isRedirecting or returning early for delegation)
+  // determine if we should reach this point to render children.
+  if (user && userProfile && !isRedirecting) {
+     return <>{children}</>;
   }
-
-  // Fallback loader if conditions for rendering children are not met AND
-  // not covered by authLoading or isRedirecting.
-  // This indicates an unexpected state, possibly while auth state is transitioning.
+  
+  // Fallback loader if conditions for rendering children are not met and not explicitly redirecting.
+  // This could happen if useEffect hasn't completed its first run, or an unexpected state.
   return (
     <div className="flex justify-center items-center h-screen">
       <Loader2 className="h-12 w-12 animate-spin text-primary" />
