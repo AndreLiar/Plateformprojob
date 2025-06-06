@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { LogIn, UserPlus, LayoutDashboard, LogOut, Briefcase, Search } from 'lucide-react'; // Added Search
+import { LogIn, UserPlus, LayoutDashboard, LogOut, Briefcase, Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function Header() {
@@ -24,26 +24,24 @@ export default function Header() {
         </Link>
         <nav className="flex items-center gap-2 md:gap-4">
           {loading ? (
-            <div className="h-9 w-24 rounded-md bg-muted animate-pulse" /> // Skeleton for loading state
-          ) : user ? (
+            <div className="h-9 w-24 rounded-md bg-muted animate-pulse" /> 
+          ) : user && userProfile ? ( // Ensure userProfile is also loaded
             <>
               <Button variant="ghost" asChild>
                 <Link href="/jobs">
                   <Search className="mr-2 h-4 w-4" /> Browse Jobs
                 </Link>
               </Button>
-              {userProfile?.role === 'recruiter' && (
-                <Button variant="ghost" asChild>
-                  <Link href="/dashboard">
-                    <LayoutDashboard className="mr-2 h-4 w-4" /> Dashboard
-                  </Link>
-                </Button>
-              )}
+              <Button variant="ghost" asChild>
+                <Link href={userProfile.role === 'recruiter' ? "/dashboard" : "/dashboard/candidate"}>
+                  <LayoutDashboard className="mr-2 h-4 w-4" /> Dashboard
+                </Link>
+              </Button>
               <Button variant="outline" onClick={handleLogout}>
                 <LogOut className="mr-2 h-4 w-4" /> Logout
               </Button>
             </>
-          ) : (
+          ) : ( // Handles both non-logged-in users and logged-in users before profile loads
             <>
               <Button variant="ghost" asChild>
                 <Link href="/jobs">
