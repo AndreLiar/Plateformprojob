@@ -1,13 +1,14 @@
+
 "use client";
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
-import { ArrowRight, Briefcase } from 'lucide-react';
+import { ArrowRight, Briefcase, LayoutDashboard, Loader2 } from 'lucide-react'; // Added LayoutDashboard, Loader2
 import Image from 'next/image';
 
 export default function HomePage() {
-  const { user, loading } = useAuth();
+  const { user, userProfile, loading } = useAuth(); // Added userProfile and loading
 
   return (
     <div className="container mx-auto px-4 py-12 md:py-20 text-center">
@@ -19,13 +20,38 @@ export default function HomePage() {
           PlatformPro Jobs is the leading destination for sourcing top-tier platform engineering talent and discovering your next career-defining role.
         </p>
         <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mb-12">
-          <Button size="lg" asChild className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-lg transition-transform hover:scale-105">
-            <Link href={user ? "/dashboard/post-job" : "/signup"}>
-              <Briefcase className="mr-2 h-5 w-5" /> Post a Job
-            </Link>
-          </Button>
+          {loading ? (
+            <Button size="lg" disabled className="bg-accent text-accent-foreground shadow-lg">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading...
+            </Button>
+          ) : !user ? (
+            <Button size="lg" asChild className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-lg transition-transform hover:scale-105">
+              <Link href="/signup">
+                <Briefcase className="mr-2 h-5 w-5" /> Post a Job
+              </Link>
+            </Button>
+          ) : userProfile?.role === 'recruiter' ? (
+            <Button size="lg" asChild className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-lg transition-transform hover:scale-105">
+              <Link href="/dashboard/post-job">
+                <Briefcase className="mr-2 h-5 w-5" /> Post a Job
+              </Link>
+            </Button>
+          ) : userProfile?.role === 'candidate' ? (
+            <Button size="lg" asChild className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-lg transition-transform hover:scale-105">
+              <Link href="/dashboard/candidate/profile">
+                <LayoutDashboard className="mr-2 h-5 w-5" /> My Dashboard
+              </Link>
+            </Button>
+          ) : (
+            // Fallback for user logged in but profile/role not loaded or defined - shows if loading is false but profile is still missing
+             <Button size="lg" asChild className="bg-accent hover:bg-accent/90 text-accent-foreground shadow-lg transition-transform hover:scale-105">
+               <Link href="/signup"> 
+                 <Briefcase className="mr-2 h-5 w-5" /> Post a Job
+               </Link>
+             </Button>
+          )}
           <Button size="lg" variant="outline" asChild className="shadow-lg transition-transform hover:scale-105">
-            <Link href="/jobs"> {/* Assuming a future /jobs page for candidates */}
+            <Link href="/jobs">
               Browse Jobs <ArrowRight className="ml-2 h-5 w-5" />
             </Link>
           </Button>
