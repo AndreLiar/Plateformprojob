@@ -2,12 +2,11 @@
 // src/app/api/stripe/create-checkout-session/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import Stripe from 'stripe';
-import { STRIPE_SECRET_KEY, STRIPE_JOB_POST_PRICE_ID } from '@/lib/stripeConfig'; // Import STRIPE_SECRET_KEY directly
+import { STRIPE_SECRET_KEY, STRIPE_JOB_POST_PRICE_ID } from '@/lib/stripeConfig'; 
 
 export async function POST(req: NextRequest) {
-  // STRIPE_SECRET_KEY is now imported directly from stripeConfig
   if (!STRIPE_SECRET_KEY) {
-    console.error('Stripe secret key (STRIPE_SECRET_KEY from config) is not set or invalid. Cannot create Stripe client for checkout session.');
+    console.error('Stripe secret key (STRIPE_SECRET_KEY from config, derived from NEXT_STRIPE_SECRET_KEY env var) is not set or invalid. Cannot create Stripe client for checkout session.');
     return NextResponse.json({ error: 'Server configuration error: Stripe secret key is missing or invalid.' }, { status: 500 });
   }
   // Initialize Stripe client inside the handler using the imported STRIPE_SECRET_KEY
@@ -23,11 +22,13 @@ export async function POST(req: NextRequest) {
     if (!priceId) {
         return NextResponse.json({ error: 'Price ID is required.' }, { status: 400 });
     }
-    // STRIPE_JOB_POST_PRICE_ID is imported and used for validation
+    
+    // Compare the received priceId with the one configured on the server (STRIPE_JOB_POST_PRICE_ID)
+    // This ensures the client isn't trying to purchase an arbitrary product.
+    // STRIPE_JOB_POST_PRICE_ID is now directly imported and should be the value from NEXT_PUBLIC_STRIPE_PRICE_PREMIUM
     if (priceId !== STRIPE_JOB_POST_PRICE_ID) {
-        console.warn(`Received priceId ${priceId} does not match configured STRIPE_JOB_POST_PRICE_ID ${STRIPE_JOB_POST_PRICE_ID}`);
-        // Depending on policy, you might want to return an error here or proceed if priceId is otherwise valid.
-        // For now, we'll proceed but log a warning.
+        console.warn(`Received priceId '${priceId}' does not match configured STRIPE_JOB_POST_PRICE_ID '${STRIPE_JOB_POST_PRICE_ID}'. Check client-side (JobPostForm.tsx) and env (NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) configuration.`);
+        return NextResponse.json({ error: 'Invalid Price ID provided.' }, { status: 400 });
     }
 
     const origin = req.headers.get('origin') || 'http://localhost:9002'; 
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
       payment_method_types: ['card'],
       line_items: [
         {
-          price: priceId, // Use the priceId received from the client
+          price: priceId, // Use the validated priceId
           quantity: 1,
         },
       ],
