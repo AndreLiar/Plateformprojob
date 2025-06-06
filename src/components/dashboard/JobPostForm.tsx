@@ -33,6 +33,8 @@ import type { ContractType, ExperienceLevel, UserProfile } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { stripeSuccessfullyInitialized, STRIPE_JOB_POST_PRICE_ID } from "@/lib/stripeConfig";
+import getStripe from "@/lib/getStripe";
 
 const jobSchema = z.object({
   title: z.string().min(5, "Title must be at least 5 characters.").max(100),
@@ -51,8 +53,8 @@ export default function JobPostForm() {
   const { user, userProfile, loading: authLoading } = useAuth();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPurchasing, setIsPurchasing] = useState(false);
   
-  // Local state for post counts to update UI immediately
   const [freePosts, setFreePosts] = useState<number | undefined>(undefined);
   const [purchasedPosts, setPurchasedPosts] = useState<number | undefined>(undefined);
 
@@ -97,7 +99,6 @@ export default function JobPostForm() {
         updatedAt: serverTimestamp(),
       });
 
-      // Decrement post count
       const userDocRef = doc(db, "users", user.uid);
       if ((freePosts ?? 0) > 0) {
         await updateDoc(userDocRef, {
@@ -114,8 +115,6 @@ export default function JobPostForm() {
       }
       
       form.reset();
-      // No need to push to my-jobs, they are likely already there or will navigate.
-      // router.push("/dashboard/my-jobs"); 
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -126,6 +125,51 @@ export default function JobPostForm() {
       setIsSubmitting(false);
     }
   }
+
+  const handlePurchase = async () => {
+    if (!user) {
+      toast({ variant: "destructive", title: "Not Authenticated", description: "You must be logged in to purchase posts." });
+      return;
+    }
+    if (!stripeSuccessfullyInitialized || !STRIPE_JOB_POST_PRICE_ID) {
+      toast({ variant: "destructive", title: "Configuration Error", description: "Stripe is not configured correctly. Cannot proceed with purchase." });
+      return;
+    }
+
+    setIsPurchasing(true);
+    try {
+      const response = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId: user.uid, priceId: STRIPE_JOB_POST_PRICE_ID }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create Stripe session.');
+      }
+
+      const { sessionId } = await response.json();
+      const stripe = await getStripe();
+
+      if (!stripe) {
+        throw new Error('Stripe.js failed to load.');
+      }
+
+      const { error } = await stripe.redirectToCheckout({ sessionId });
+      if (error) {
+        console.error("Stripe redirect error:", error);
+        toast({ variant: "destructive", title: "Stripe Error", description: error.message || "Failed to redirect to Stripe." });
+      }
+    } catch (error: any) {
+      console.error("Purchase error:", error);
+      toast({ variant: "destructive", title: "Purchase Error", description: error.message || "An unexpected error occurred." });
+    } finally {
+      setIsPurchasing(false);
+    }
+  };
 
   if (authLoading) {
     return (
@@ -162,17 +206,22 @@ export default function JobPostForm() {
             <h3 className="text-xl font-semibold mb-2">No Job Posts Left</h3>
             <p className="text-muted-foreground mb-4">You've used all your available job posts. To post more jobs, please purchase additional credits.</p>
             <Button 
-              onClick={() => toast({ title: "Coming Soon!", description: "Stripe integration for purchasing job posts is under development."})}
+              onClick={handlePurchase}
+              disabled={isPurchasing || !stripeSuccessfullyInitialized}
               className="bg-accent hover:bg-accent/90 text-accent-foreground"
             >
-              <ShoppingCart className="mr-2 h-5 w-5" /> Purchase Job Posts (5 EUR per post)
+              {isPurchasing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ShoppingCart className="mr-2 h-5 w-5" />}
+              Purchase Job Posts (5 EUR per post)
             </Button>
+            {!stripeSuccessfullyInitialized && (
+                <p className="text-xs text-destructive mt-2">Stripe payments are not configured by the site administrator.</p>
+            )}
           </div>
         )}
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            <fieldset disabled={!canPostJob || isSubmitting || authLoading} className="space-y-8">
+            <fieldset disabled={!canPostJob || isSubmitting || authLoading || isPurchasing} className="space-y-8">
               <FormField
                 control={form.control}
                 name="title"
@@ -276,7 +325,7 @@ export default function JobPostForm() {
               </div>
             </fieldset>
             {canPostJob && (
-              <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground transition-transform hover:scale-105" disabled={isSubmitting || authLoading || !canPostJob}>
+              <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground transition-transform hover:scale-105" disabled={isSubmitting || authLoading || !canPostJob || isPurchasing}>
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Posting...
