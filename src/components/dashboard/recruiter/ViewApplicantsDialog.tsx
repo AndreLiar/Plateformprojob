@@ -101,7 +101,7 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="font-headline text-2xl text-primary">Applicants for: {job.title}</DialogTitle>
           <DialogDescription>
@@ -169,7 +169,7 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
                         {app.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right whitespace-nowrap">
                       <Button
                         variant="outline"
                         size="sm"
