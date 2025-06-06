@@ -16,9 +16,12 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, ExternalLink, UserX, FileText } from 'lucide-react';
+import { Loader2, ExternalLink, UserX, FileText, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Added Alert components
+import { useToast } from '@/hooks/use-toast'; // Added useToast
+import Link from 'next/link'; // Added Link for the Firebase console URL
 
 // Define a type for the job prop that ViewApplicantsDialog can receive
 interface JobForDialog extends Omit<OriginalJobType, 'createdAt' | 'updatedAt'> {
@@ -46,11 +49,17 @@ const statusColors: { [key: string]: string } = {
 export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewApplicantsDialogProps) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(false);
+  const [missingIndexError, setMissingIndexError] = useState(false); // New state for index error
+  const { toast } = useToast(); // Initialize toast
+
+  const firestoreIndexCreationUrl = "https://console.firebase.google.com/v1/r/project/marketplace-79e9c/firestore/indexes?create_composite=ClZwcm9qZWN0cy9tYXJrZXRwbGFjZS03OWU5Yy9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvYXBwbGljYXRpb25zL2luZGV4ZXMvXxABGgkKBWpvYklkEAEaDQoJYXBwbGllZEF0EAIaDAoIX19uYW1lX18QAg";
+
 
   useEffect(() => {
     if (open && job?.id) {
       const fetchApplications = async () => {
         setLoading(true);
+        setMissingIndexError(false); // Reset error state on new fetch
         try {
           const applicationsRef = collection(db, 'applications');
           const q = query(
@@ -64,16 +73,29 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
             ...doc.data(),
           } as Application));
           setApplications(fetchedApplications);
-        } catch (error) {
+        } catch (error: any) {
           console.error("Error fetching applications:", error);
-          // Handle error (e.g., show toast)
+          if (error.code === 'failed-precondition' && error.message.includes('query requires an index')) {
+            setApplications([]);
+            setMissingIndexError(true);
+          } else {
+            toast({
+              variant: "destructive",
+              title: "Error Fetching Applicants",
+              description: error.message || "Could not load applicants. Please try again.",
+            });
+          }
         } finally {
           setLoading(false);
         }
       };
       fetchApplications();
+    } else {
+      // If dialog is closed or no job ID, clear applications and error
+      setApplications([]);
+      setMissingIndexError(false);
     }
-  }, [open, job?.id]);
+  }, [open, job?.id, toast]); // Added toast to dependency array
 
   if (!job) return null;
 
@@ -91,6 +113,29 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
             <div className="flex justify-center items-center h-40">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
             </div>
+          ) : missingIndexError ? (
+            <Alert variant="destructive" className="my-4">
+              <AlertTriangle className="h-5 w-5" />
+              <AlertTitle>Firestore Index Required</AlertTitle>
+              <AlertDescription>
+                <p className="mb-2">
+                  To view applicants, a specific Firestore index needs to be created.
+                  This is a one-time setup for this type of query.
+                </p>
+                <p>
+                  Please click the link below to go to your Firebase console and create the index.
+                  It usually takes a few minutes to build.
+                </p>
+                <Button variant="link" asChild className="p-0 h-auto text-destructive-foreground hover:underline">
+                  <Link href={firestoreIndexCreationUrl} target="_blank" rel="noopener noreferrer">
+                    Create Firestore Index Now
+                  </Link>
+                </Button>
+                <p className="mt-2 text-xs">
+                  The required index is for the 'applications' collection, on fields: 'jobId' (ascending) and 'appliedAt' (descending).
+                </p>
+              </AlertDescription>
+            </Alert>
           ) : applications.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground">
               <UserX className="h-16 w-16 mx-auto mb-4 text-gray-400" />
@@ -117,8 +162,8 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
                       {app.appliedAt?.toDate ? format(app.appliedAt.toDate(), 'PPp') : 'N/A'}
                     </TableCell>
                     <TableCell>
-                       <Badge 
-                        variant="outline" 
+                       <Badge
+                        variant="outline"
                         className={`text-xs font-semibold ${statusColors[app.status] || 'bg-gray-100 text-gray-800 border-gray-300'}`}
                       >
                         {app.status}
