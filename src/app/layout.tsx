@@ -33,7 +33,10 @@ export default function RootLayout({
       <head>
         {/* Google Fonts links are managed by next/font, so direct links are not needed here if using next/font */}
       </head>
-      <body className={cn("font-body antialiased", inter.variable, spaceGrotesk.variable)}>
+      <body 
+        className={cn("font-body antialiased", inter.variable, spaceGrotesk.variable)}
+        suppressHydrationWarning={true}
+      >
         <AuthProvider>
           <div className="flex flex-col min-h-screen">
             <Header />
