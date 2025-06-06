@@ -48,8 +48,6 @@ const jobSchema = z.object({
 const contractTypes: ContractType[] = ["Full-time", "Part-time", "Contract"];
 const experienceLevels: ExperienceLevel[] = ["Entry", "Mid", "Senior"];
 
-// Client-side check for basic Stripe.js initialization capability
-// STRIPE_PUBLISHABLE_KEY is imported and directly usable client-side
 const canInitializeStripeJs = !!STRIPE_PUBLISHABLE_KEY;
 
 export default function JobPostForm() {
@@ -152,11 +150,12 @@ export default function JobPostForm() {
             title: "Configuration Error",
             description: "Cannot proceed: Stripe Price ID for job posts (NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) is missing. Please ensure this is set in your environment variables.",
         });
-        setIsPurchasing(false);
         return;
     }
 
     setIsPurchasing(true);
+    let checkoutSessionId: string | undefined; 
+
     try {
       const response = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
@@ -167,48 +166,70 @@ export default function JobPostForm() {
       });
 
       if (!response.ok) {
-        let errorData = { error: `API request failed with status ${response.status}` };
+        let errorData = { message: `API request failed with status ${response.status}` };
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.indexOf("application/json") !== -1) {
           try {
-            errorData = await response.json();
+            const parsedError = await response.json();
+            errorData.message = parsedError.error || parsedError.message || errorData.message;
           } catch (e) {
             console.error("Failed to parse JSON error response:", e);
-            // errorData already has a default message if parsing fails
           }
         } else {
-          // If not JSON, try to get text for more context
           const textError = await response.text();
-          console.error("API Error (HTML/Text Response):", textError); // Log the HTML/text
-          errorData.error = `API returned non-JSON response. Status: ${response.status}. Check browser console for full error text.`;
+          console.error("API Error (HTML/Text Response):", textError);
+          errorData.message = `API returned non-JSON response. Status: ${response.status}.`;
         }
-        
         toast({ 
             variant: "destructive", 
             title: "Checkout Creation Failed", 
-            description: errorData.error || 'Failed to create Stripe session. Check server logs and console.' 
+            description: errorData.message 
         });
-        setIsPurchasing(false);
-        return;
+        throw new Error(errorData.message); 
       }
 
-      const { sessionId } = await response.json(); // This should be safe if response.ok is true
-      const stripe = await getStripe();
+      const sessionData = await response.json();
+      checkoutSessionId = sessionData.sessionId;
 
+      if (!checkoutSessionId) {
+        throw new Error('Failed to retrieve session ID from server.');
+      }
+
+      const stripe = await getStripe();
       if (!stripe) {
         throw new Error('Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.');
       }
 
-      const { error } = await stripe.redirectToCheckout({ sessionId });
-      if (error) {
-        console.error("Stripe redirect error:", error);
-        toast({ variant: "destructive", title: "Stripe Error", description: error.message || "Failed to redirect to Stripe." });
+      const { error: stripeJsError } = await stripe.redirectToCheckout({ sessionId: checkoutSessionId });
+
+      if (stripeJsError) {
+        console.error("Stripe.js redirect error object:", stripeJsError);
+        throw new Error(stripeJsError.message || "Stripe.js reported an error during redirect setup.");
       }
     } catch (error: any) {
-      console.error("Purchase error:", error);
-      toast({ variant: "destructive", title: "Purchase Error", description: error.message || "An unexpected error occurred." });
+      console.error("Purchase error or redirect exception:", error);
+
+      if (checkoutSessionId && error.message && error.message.includes("Failed to set a named property 'href' on 'Location'")) {
+        toast({
+          variant: "warning",
+          title: "Automatic Redirect Blocked",
+          description: "Opening Stripe Checkout in a new tab. Please complete your purchase there.",
+          duration: 8000,
+        });
+        const checkoutUrl = `https://checkout.stripe.com/c/pay/${checkoutSessionId}`;
+        const newWindow = window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
+        if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+            toast({
+                variant: "destructive",
+                title: "Popup Blocked",
+                description: "Could not open Stripe Checkout in a new tab. Please disable your popup blocker for this site and try again.",
+                duration: 8000,
+            });
+        }
+      } else {
+        toast({ variant: "destructive", title: "Purchase Error", description: error.message || "An unexpected error occurred." });
+      }
     } finally {
-      // Only set isPurchasing to false if not redirecting, or if an error occurred before redirect
       setIsPurchasing(false);
     }
   };
@@ -403,4 +424,3 @@ export default function JobPostForm() {
     </Card>
   );
 }
-
