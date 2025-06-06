@@ -33,7 +33,7 @@ import type { ContractType, ExperienceLevel, UserProfile } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { stripeSuccessfullyInitialized, STRIPE_JOB_POST_PRICE_ID } from "@/lib/stripeConfig";
+import { STRIPE_PUBLISHABLE_KEY, STRIPE_JOB_POST_PRICE_ID } from "@/lib/stripeConfig"; // Import client-relevant configs
 import getStripe from "@/lib/getStripe";
 
 const jobSchema = z.object({
@@ -47,6 +47,9 @@ const jobSchema = z.object({
 
 const contractTypes: ContractType[] = ["Full-time", "Part-time", "Contract"];
 const experienceLevels: ExperienceLevel[] = ["Entry", "Mid", "Senior"];
+
+// Client-side check for basic Stripe.js initialization capability
+const canInitializeStripeJs = !!STRIPE_PUBLISHABLE_KEY;
 
 export default function JobPostForm() {
   const { toast } = useToast();
@@ -77,7 +80,7 @@ export default function JobPostForm() {
     },
   });
 
-  const canPostJob = (freePosts ?? 0) > 0 || (purchasedPosts ?? 0) > 0;
+  const canPostJobWithCredits = (freePosts ?? 0) > 0 || (purchasedPosts ?? 0) > 0;
 
   async function onSubmit(values: z.infer<typeof jobSchema>) {
     if (!user || !userProfile) {
@@ -85,7 +88,7 @@ export default function JobPostForm() {
       return;
     }
 
-    if (!canPostJob) {
+    if (!canPostJobWithCredits) {
       toast({ variant: "destructive", title: "No Posts Remaining", description: "Please purchase more job posts." });
       return;
     }
@@ -115,6 +118,7 @@ export default function JobPostForm() {
       }
       
       form.reset();
+      router.push('/dashboard/my-jobs'); // Navigate to my-jobs after successful post
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -132,11 +136,12 @@ export default function JobPostForm() {
       return;
     }
 
-    if (!stripeSuccessfullyInitialized) {
+    if (!canInitializeStripeJs) {
+      // This check should ideally be redundant if the button is disabled, but good for safety.
       toast({ 
         variant: "destructive", 
         title: "Stripe Error", 
-        description: "Core Stripe keys (Publishable or Secret) are missing. Cannot initiate purchase. Please check server logs." 
+        description: "Stripe Publishable Key (NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) is missing. Cannot initiate purchase." 
       });
       return;
     }
@@ -162,13 +167,22 @@ export default function JobPostForm() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create Stripe session.');
+        // Log the detailed error from the server API
+        console.error("Create Checkout Session API Error:", errorData);
+        toast({ 
+            variant: "destructive", 
+            title: "Checkout Creation Failed", 
+            description: errorData.error || 'Failed to create Stripe session. Check server logs for more details on NEXT_STRIPE_SECRET_KEY or STRIPE_PRICE_PREMIUM issues.' 
+        });
+        setIsPurchasing(false); // Reset purchasing state on API error
+        return;
       }
 
       const { sessionId } = await response.json();
       const stripe = await getStripe();
 
       if (!stripe) {
+        // This should ideally be caught by canInitializeStripeJs earlier
         throw new Error('Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.');
       }
 
@@ -181,7 +195,12 @@ export default function JobPostForm() {
       console.error("Purchase error:", error);
       toast({ variant: "destructive", title: "Purchase Error", description: error.message || "An unexpected error occurred." });
     } finally {
-      setIsPurchasing(false);
+      // Only set isPurchasing to false if not redirecting, or if an error occurred before redirect
+      // If redirectToCheckout is called, the page will change, so state reset might not be visible
+      // However, if it fails before redirect, we need to reset
+      if (!(await getStripe())?.redirectToCheckout) { // A bit of a heuristic
+          setIsPurchasing(false);
+      }
     }
   };
 
@@ -200,14 +219,14 @@ export default function JobPostForm() {
         <CardDescription>Fill in the details below to create a new job listing.</CardDescription>
       </CardHeader>
       <CardContent>
-        <Alert variant={canPostJob ? "default" : "destructive"} className="mb-6 bg-muted/30">
+        <Alert variant={canPostJobWithCredits ? "default" : "destructive"} className="mb-6 bg-muted/30">
           <Info className="h-4 w-4" />
-          <AlertTitle>{canPostJob ? "Job Post Credits" : "Out of Job Posts"}</AlertTitle>
+          <AlertTitle>{canPostJobWithCredits ? "Job Post Credits" : "Out of Job Posts"}</AlertTitle>
           <AlertDescription>
             {freePosts !== undefined && purchasedPosts !== undefined ? (
               <>
                 You have <strong>{freePosts}</strong> free post(s) and <strong>{purchasedPosts}</strong> purchased post(s) remaining.
-                {!canPostJob && " Please purchase more to continue posting."}
+                {!canPostJobWithCredits && " Please purchase more to continue posting."}
               </>
             ) : (
               "Loading post credit information..."
@@ -215,39 +234,40 @@ export default function JobPostForm() {
           </AlertDescription>
         </Alert>
 
-        {!canPostJob && !authLoading && (
+        {!canPostJobWithCredits && !authLoading && (
           <div className="text-center my-8 p-6 border border-dashed rounded-md bg-card">
             <h3 className="text-xl font-semibold mb-2 text-foreground">No Job Posts Left</h3>
             <p className="text-muted-foreground mb-4">You've used all your available job posts. To post more jobs, please purchase additional credits.</p>
             
-            {!stripeSuccessfullyInitialized && (
+            {!canInitializeStripeJs && ( // Check if NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set
                 <Alert variant="destructive" className="mb-4 text-left">
                     <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Stripe Configuration Incomplete</AlertTitle>
+                    <AlertTitle>Stripe Client Configuration Incomplete</AlertTitle>
                     <AlertDescription>
-                        The payment system's core keys (Publishable Key or Secret Key) are not fully configured by the site administrator.
-                        The purchase button is disabled. Please check server logs for details on missing Stripe environment variables.
+                        The Stripe Publishable Key (NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) is not configured.
+                        The purchase button is disabled. Please ensure this is set in your environment variables and the server is restarted.
+                        Your site administrator should also check server logs for details on 'NEXT_STRIPE_SECRET_KEY' and 'STRIPE_PRICE_PREMIUM' for full payment functionality.
                     </AlertDescription>
                 </Alert>
             )}
             
             <Button 
               onClick={handlePurchase}
-              disabled={isPurchasing || !stripeSuccessfullyInitialized} 
+              disabled={isPurchasing || !canInitializeStripeJs} // Disable if Stripe.js can't init
               className="bg-accent hover:bg-accent/90 text-accent-foreground"
-              aria-disabled={!stripeSuccessfullyInitialized}
+              aria-disabled={!canInitializeStripeJs}
             >
               {isPurchasing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ShoppingCart className="mr-2 h-5 w-5" />}
               Purchase Job Posts (5 EUR per post)
             </Button>
 
-            {stripeSuccessfullyInitialized && !STRIPE_JOB_POST_PRICE_ID && (
+            {canInitializeStripeJs && !STRIPE_JOB_POST_PRICE_ID && ( // If publishable key is OK, but price ID is missing
                  <Alert variant="warning" className="mt-4 text-left max-w-md mx-auto">
                     <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Price Not Configured</AlertTitle>
+                    <AlertTitle>Price Not Configured for Purchase</AlertTitle>
                     <AlertDescription>
                         The purchase button is enabled, but the specific Price ID for job posts (STRIPE_PRICE_PREMIUM) is missing in the server configuration.
-                        Purchases cannot be completed. The site administrator needs to set this environment variable.
+                        Purchases cannot be completed until the site administrator sets this environment variable.
                     </AlertDescription>
                 </Alert>
             )}
@@ -256,7 +276,7 @@ export default function JobPostForm() {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            <fieldset disabled={!canPostJob || isSubmitting || authLoading || isPurchasing} className="space-y-8">
+            <fieldset disabled={!canPostJobWithCredits || isSubmitting || authLoading || isPurchasing} className="space-y-8">
               <FormField
                 control={form.control}
                 name="title"
@@ -359,8 +379,8 @@ export default function JobPostForm() {
                 />
               </div>
             </fieldset>
-            {canPostJob && (
-              <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground transition-transform hover:scale-105" disabled={isSubmitting || authLoading || !canPostJob || isPurchasing}>
+            {canPostJobWithCredits && ( // This button is for submitting the form using existing credits
+              <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground transition-transform hover:scale-105" disabled={isSubmitting || authLoading || isPurchasing}>
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Posting...
