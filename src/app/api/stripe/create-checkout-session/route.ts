@@ -2,15 +2,17 @@
 // src/app/api/stripe/create-checkout-session/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import Stripe from 'stripe';
-import { STRIPE_SECRET_KEY, STRIPE_JOB_POST_PRICE_ID } from '@/lib/stripeConfig'; 
+import { getServerStripeSecretKey, STRIPE_JOB_POST_PRICE_ID } from '@/lib/stripeConfig'; 
 
 export async function POST(req: NextRequest) {
-  if (!STRIPE_SECRET_KEY) {
+  const stripeSecretKey = getServerStripeSecretKey();
+
+  if (!stripeSecretKey) {
     console.error('Stripe secret key (STRIPE_SECRET_KEY from config, derived from NEXT_STRIPE_SECRET_KEY env var) is not set or invalid. Cannot create Stripe client for checkout session.');
     return NextResponse.json({ error: 'Server configuration error: Stripe secret key is missing or invalid.' }, { status: 500 });
   }
   // Initialize Stripe client inside the handler using the imported STRIPE_SECRET_KEY
-  const stripe = new Stripe(STRIPE_SECRET_KEY);
+  const stripe = new Stripe(stripeSecretKey);
 
   try {
     const body = await req.json();
@@ -25,7 +27,6 @@ export async function POST(req: NextRequest) {
     
     // Compare the received priceId with the one configured on the server (STRIPE_JOB_POST_PRICE_ID)
     // This ensures the client isn't trying to purchase an arbitrary product.
-    // STRIPE_JOB_POST_PRICE_ID is now directly imported and should be the value from NEXT_PUBLIC_STRIPE_PRICE_PREMIUM
     if (priceId !== STRIPE_JOB_POST_PRICE_ID) {
         console.warn(`Received priceId '${priceId}' does not match configured STRIPE_JOB_POST_PRICE_ID '${STRIPE_JOB_POST_PRICE_ID}'. Check client-side (JobPostForm.tsx) and env (NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) configuration.`);
         return NextResponse.json({ error: 'Invalid Price ID provided.' }, { status: 400 });

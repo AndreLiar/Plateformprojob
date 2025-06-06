@@ -1,10 +1,6 @@
 
 // src/lib/stripeConfig.ts
 
-// This file runs on the server during build and also when API routes using it are called.
-// It also runs partially on the client if client components import values from it
-// (though only NEXT_PUBLIC_ prefixed vars will have values client-side).
-
 console.log("--- Stripe Configuration Check (Module Execution Scope) ---");
 
 // Stripe Publishable Key (for client-side Stripe.js initialization)
@@ -12,12 +8,16 @@ const rawPublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 export const STRIPE_PUBLISHABLE_KEY = rawPublishableKey?.trim();
 console.log(`[Stripe Config] NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: RawValue='${rawPublishableKey || "Not set (raw)"}', Type='${typeof rawPublishableKey}', TrimmedValue='${STRIPE_PUBLISHABLE_KEY || "Not set (trimmed)"}'`);
 
-// Stripe Secret Key (for server-side API calls)
+// Stripe Secret Key (for server-side API calls) - Accessed via function
 const rawSecretKey = process.env.NEXT_STRIPE_SECRET_KEY;
-export const STRIPE_SECRET_KEY = rawSecretKey?.trim(); // Exporting directly
-console.log(`[Stripe Config] NEXT_STRIPE_SECRET_KEY: RawIsSet='${!!rawSecretKey}', RawType='${typeof rawSecretKey}', TrimmedIsSet='${!!STRIPE_SECRET_KEY}'`);
+const serverSideStripeSecretKey = rawSecretKey?.trim();
+console.log(`[Stripe Config] NEXT_STRIPE_SECRET_KEY: RawIsSet='${!!rawSecretKey}', RawType='${typeof rawSecretKey}', TrimmedIsSet='${!!serverSideStripeSecretKey}'`);
 
-// Stripe Price ID for the "Job Post" product - read from NEXT_PUBLIC_ for client & server access
+export function getServerStripeSecretKey(): string | undefined {
+  return serverSideStripeSecretKey;
+}
+
+// Stripe Price ID for the "Job Post" product
 const rawJobPostPriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_PREMIUM;
 export const STRIPE_JOB_POST_PRICE_ID = rawJobPostPriceId?.trim();
 console.log(`[Stripe Config] NEXT_PUBLIC_STRIPE_PRICE_PREMIUM (for Job Post Price ID): RawValue='${rawJobPostPriceId || "Not set (raw)"}', Type='${typeof rawJobPostPriceId}', TrimmedValue='${STRIPE_JOB_POST_PRICE_ID || "Not set (trimmed)"}'`);
@@ -28,19 +28,23 @@ export const STRIPE_WEBHOOK_SECRET = rawWebhookSecret?.trim();
 console.log(`[Stripe Config] STRIPE_WEBHOOK_SECRET: RawIsSet='${!!rawWebhookSecret}', RawType='${typeof rawWebhookSecret}', TrimmedIsSet='${!!STRIPE_WEBHOOK_SECRET}' (Server-side only)`);
 
 
-// --- Client-side Button Enablement Check ---
-// This flag indicates if the basic client-side setup for Stripe (Publishable Key) is present.
+// --- Client-side Button Enablement Check (based on what client can know) ---
 export const clientSideStripePublishableKeyPresent = !!STRIPE_PUBLISHABLE_KEY;
+export const clientSideStripePriceIdPresent = !!STRIPE_JOB_POST_PRICE_ID;
+
 console.log(`[Stripe Config] clientSideStripePublishableKeyPresent (for UI button enablement) evaluated to: ${clientSideStripePublishableKeyPresent}`);
+console.log(`[Stripe Config] clientSideStripePriceIdPresent (for UI price checks) evaluated to: ${clientSideStripePriceIdPresent}`);
+
 
 // --- Overall configuration status for logging ---
-const allCoreApiKeysPresent = !!STRIPE_PUBLISHABLE_KEY && !!STRIPE_SECRET_KEY && !!STRIPE_JOB_POST_PRICE_ID;
-console.log(`[Stripe Config] All core API keys (Publishable, Secret, Price ID) appear to be: ${allCoreApiKeysPresent ? 'Present' : 'INCOMPLETE'}`);
+const serverSideKeysForApiTransactions = !!serverSideStripeSecretKey && !!STRIPE_JOB_POST_PRICE_ID;
+
+console.log(`[Stripe Config] Server-side keys for API transactions (Secret Key from NEXT_STRIPE_SECRET_KEY, Price ID from NEXT_PUBLIC_STRIPE_PRICE_PREMIUM) appear to be: ${serverSideKeysForApiTransactions ? 'Sufficiently Present' : 'INCOMPLETE for API'}`);
 
 if (!STRIPE_PUBLISHABLE_KEY) {
-  console.warn("[Stripe Config] CRITICAL CLIENT-SIDE: 'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY' is missing or empty. Stripe.js cannot load on the client. Purchase button will be disabled.");
+  console.warn("[Stripe Config] CRITICAL CLIENT-SIDE: 'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY' is missing or empty. Stripe.js cannot load on the client. Purchase button may be disabled or non-functional.");
 }
-if (!STRIPE_SECRET_KEY) {
+if (!serverSideStripeSecretKey) { // Check the internal variable holding the secret key
   console.warn(`[Stripe Config] CRITICAL SERVER-SIDE: Stripe API calls will fail. 'NEXT_STRIPE_SECRET_KEY' is missing or empty. Please set this and restart the server.`);
 }
 if (!STRIPE_JOB_POST_PRICE_ID) {
@@ -52,8 +56,8 @@ if (!STRIPE_WEBHOOK_SECRET) {
 
 const allStripeVarsPresentForFullFunctionality =
     !!STRIPE_PUBLISHABLE_KEY &&
-    !!STRIPE_SECRET_KEY &&
-    !!STRIPE_JOB_POST_PRICE_ID && // Added Price ID to this check
+    !!serverSideStripeSecretKey &&
+    !!STRIPE_JOB_POST_PRICE_ID &&
     !!STRIPE_WEBHOOK_SECRET;
 
 if (!allStripeVarsPresentForFullFunctionality) {
