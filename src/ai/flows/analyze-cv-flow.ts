@@ -95,10 +95,14 @@ export async function analyzeCvAgainstJob(input: AnalyzeCvInput): Promise<Analyz
     return await analyzeCvFlow(input);
   } catch (error: any) {
     console.error("Error in analyzeCvAgainstJob flow:", error);
-    // Return a structured error response matching the output schema
+    let summaryMessage = `Error during AI analysis: ${error.message || "Unknown error"}`;
+    // Check if the error message indicates an unsupported MIME type for the media helper
+    if (error.message && (error.message.includes("mimeType") && error.message.includes("not supported"))) {
+        summaryMessage = `AI analysis failed: The uploaded CV file type (e.g., DOCX, PDF) is not directly supported for content analysis by the current AI model configuration. The application has been submitted without AI insights. Original error: ${error.message}`;
+    }
     return {
       score: 0,
-      summary: `Error during AI analysis: ${error.message || "Unknown error"}`,
+      summary: summaryMessage,
       strengths: [],
       weaknesses: ["AI analysis could not be completed due to an error."],
     };
