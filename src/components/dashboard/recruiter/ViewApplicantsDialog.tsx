@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { Application, Job as OriginalJobType } from '@/lib/types';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, orderBy, Timestamp, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore'; // Removed doc, updateDoc
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,13 +17,13 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, ExternalLink, UserX, FileText, AlertTriangle, TrendingUp, ChevronsUpDown, Info, Sparkles } from 'lucide-react';
+import { Loader2, ExternalLink, UserX, FileText, AlertTriangle, Sparkles, Info } from 'lucide-react'; // Removed TrendingUp, ChevronsUpDown
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { TooltipProvider } from '@/components/ui/tooltip'; // Removed Tooltip, TooltipContent, TooltipTrigger
 
 interface JobForDialog extends Omit<OriginalJobType, 'createdAt' | 'updatedAt'> {
   createdAt?: Timestamp | string;
@@ -36,13 +36,12 @@ interface ViewApplicantsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const firestoreIndexCreationUrl = "https://console.firebase.google.com/v1/r/project/marketplace-79e9c/firestore/indexes?create_composite=ClZwcm9qZWN0cy9tYXJrZXRwbGFjZS03OWU5Yy9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvYXBwbGljYXRpb25zL2luZGV4ZXMvXxABGgkKBWpvYklkEAEaDQoJYXBwbGllZEF0EAIaDAoIX19uYW1lX18QAg"; 
+const firestoreIndexCreationUrl = "https://console.firebase.google.com/v1/r/project/marketplace-79e9c/firestore/indexes?create_composite=ClZwcm9qZWN0cy9tYXJrZXRwbGFjZS03OWU5Yy9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvYXBwbGljYXRpb25zL2luZGV4ZXMvXxABGgkKBWpvYklkEAEaDQoJYXBwbGllZEF0EAIaDAoIX19uYW1lX18QAg";
 
 export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewApplicantsDialogProps) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(false);
   const [missingIndexError, setMissingIndexError] = useState(false);
-  // const [sortOrder, setSortOrder] = useState<'score_desc' | 'applied_desc'>('applied_desc'); // Default to appliedAt initially
   const { toast } = useToast();
 
   const fetchApplications = useCallback(async () => {
@@ -54,7 +53,7 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
       const q = query(
         applicationsRef,
         where('jobId', '==', job.id),
-        orderBy('appliedAt', 'desc') 
+        orderBy('appliedAt', 'desc')
       );
       const querySnapshot = await getDocs(q);
       let fetchedApplications = querySnapshot.docs.map(doc => ({
@@ -67,7 +66,7 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
       console.error("Error fetching applications:", error);
       if (error.code === 'failed-precondition' && error.message.includes('query requires an index')) {
         setApplications([]);
-        setMissingIndexError(true); 
+        setMissingIndexError(true);
       } else {
         toast({
           variant: "destructive",
@@ -84,14 +83,11 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
     if (open) {
       fetchApplications();
     } else {
-      setApplications([]);
+      setApplications([]); // Clear applications when dialog closes
       setMissingIndexError(false);
     }
   }, [open, fetchApplications]);
 
-  // const toggleSortOrder = () => {
-  //   setSortOrder(prev => prev === 'score_desc' ? 'applied_desc' : 'score_desc');
-  // };
 
   if (!job) return null;
 
@@ -104,8 +100,8 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
             Review candidates who applied. AI insights are coming soon.
           </DialogDescription>
         </DialogHeader>
-        <TooltipProvider>
-        <ScrollArea className="flex-grow px-6"> 
+        <TooltipProvider> {/* TooltipProvider is still needed for other potential tooltips within ShadCN components */}
+        <ScrollArea className="flex-grow px-6">
           {loading ? (
             <div className="flex justify-center items-center h-40">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -116,11 +112,10 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
               <AlertTitle>Firestore Index Required</AlertTitle>
               <AlertDescription>
                 <p className="mb-2">
-                  To view applicants efficiently, a Firestore index for 'jobId' and 'appliedAt' on the 'applications' collection might be needed.
+                  To view applicants efficiently, a Firestore index is likely needed.
                 </p>
                 <p>
-                  If you see this message frequently or experience slow loads, consider adding the index in your Firebase console.
-                  The current Firestore query attempts `where('jobId', '==', job.id), orderBy('appliedAt', 'desc')`.
+                  If you see this message, please consider adding the composite index for 'jobId' (ascending) and 'appliedAt' (descending) on the 'applications' collection in your Firebase console.
                   <Link href={firestoreIndexCreationUrl} target="_blank" rel="noopener noreferrer" className="text-destructive-foreground underline ml-1">
                      Click here for a pre-filled index creation link.
                   </Link>
@@ -160,11 +155,13 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
                   <TableRow key={app.id} className="hover:bg-muted/20">
                     <TableCell className="font-medium py-3">{app.candidateName || 'N/A'}</TableCell>
                     <TableCell className="py-3">{app.candidateEmail || 'N/A'}</TableCell>
-                    <TableCell className="py-3 text-center text-muted-foreground">
-                        <Badge variant="outline" className="text-xs">N/A</Badge>
+                    <TableCell className="py-3 text-center">
+                        <Badge variant="outline" className="text-xs text-muted-foreground">
+                           N/A
+                        </Badge>
                     </TableCell>
                     <TableCell className="py-3 text-xs text-muted-foreground">
-                        Coming Soon
+                        {app.aiAnalysisSummary || "Coming Soon"}
                     </TableCell>
                     <TableCell className="py-3 text-xs">
                       {app.appliedAt?.toDate ? format(app.appliedAt.toDate(), 'PPp') : 'N/A'}
