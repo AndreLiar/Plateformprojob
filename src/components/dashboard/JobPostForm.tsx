@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, Info, ShoppingCart, AlertTriangle, ChevronsUpDown, ListChecks } from "lucide-react";
+import { Loader2, Info, ShoppingCart, AlertTriangle, ChevronsUpDown, ListChecks, Sparkles } from "lucide-react"; // Added Sparkles
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
@@ -37,11 +37,12 @@ import { STRIPE_PUBLISHABLE_KEY, STRIPE_JOB_POST_PRICE_ID, clientSideStripePubli
 import getStripe from "@/lib/getStripe";
 import jobTitlesData from '@/lib/job-titles.json';
 import platformTechnologiesData from '@/lib/platform-technologies.json';
-import platformModulesData from '@/lib/platforms-modules.json'; // Import modules data
+import platformModulesData from '@/lib/platforms-modules.json';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { generateJobDescription, type GenerateJobDescriptionInput } from "@/ai/flows/job-description-generator";
 
 
 const platforms = Object.keys(jobTitlesData) as (keyof typeof jobTitlesData)[];
@@ -52,10 +53,13 @@ const jobSchema = z.object({
   title: z.string().min(1, "Job title is required.").max(100),
   description: z.string().min(20, "Description must be at least 20 characters.").max(5000),
   technologies: z.string().min(1, "Specific technologies are required (at least one).").max(200),
-  modules: z.string().optional(), // Added modules field
+  modules: z.string().optional(), 
   location: z.string().min(2, "Location is required.").max(100),
   contractType: z.enum(["Full-time", "Part-time", "Contract"]),
   experienceLevel: z.enum(["Entry", "Mid", "Senior"]),
+  // AI Specific fields - not part of the job document saved to DB, only for generation
+  keyResponsibilitiesSummary: z.string().optional(),
+  companyCultureSnippet: z.string().optional(),
 });
 
 const contractTypes: ContractType[] = ["Full-time", "Part-time", "Contract"];
@@ -69,6 +73,7 @@ export default function JobPostForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isFulfillingOrder, setIsFulfillingOrder] = useState(false);
+  const [isGeneratingAIDescription, setIsGeneratingAIDescription] = useState(false);
   
   const [freePosts, setFreePosts] = useState<number | undefined>(undefined);
   const [purchasedPosts, setPurchasedPosts] = useState<number | undefined>(undefined);
@@ -80,23 +85,25 @@ export default function JobPostForm() {
       title: "",
       description: "",
       technologies: "",
-      modules: "", // Default for modules
+      modules: "", 
       location: "",
       contractType: "Full-time",
       experienceLevel: "Mid",
+      keyResponsibilitiesSummary: "",
+      companyCultureSnippet: "",
     },
   });
 
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformKey | ''>(() => form.getValues('platform') || '');
   const [availableJobTitles, setAvailableJobTitles] = useState<string[]>([]);
   const [suggestedTechnologies, setSuggestedTechnologies] = useState<string[]>([]);
-  const [availableModules, setAvailableModules] = useState<string[]>([]); // State for modules
+  const [availableModules, setAvailableModules] = useState<string[]>([]); 
 
   const [multiSelectSelectedTech, setMultiSelectSelectedTech] = useState<string[]>(() => {
     const initialTechString = form.getValues('technologies');
     return initialTechString ? initialTechString.split(',').map(t => t.trim()).filter(t => t) : [];
   });
-  const [multiSelectSelectedModules, setMultiSelectSelectedModules] = useState<string[]>(() => { // State for selected modules
+  const [multiSelectSelectedModules, setMultiSelectSelectedModules] = useState<string[]>(() => { 
     const initialModulesString = form.getValues('modules');
     return initialModulesString ? initialModulesString.split(',').map(m => m.trim()).filter(m => m) : [];
   });
@@ -106,11 +113,11 @@ export default function JobPostForm() {
     if (selectedPlatform && jobTitlesData[selectedPlatform]) {
       setAvailableJobTitles(jobTitlesData[selectedPlatform]);
       setSuggestedTechnologies(platformTechnologiesData[selectedPlatform as keyof typeof platformTechnologiesData] || []);
-      setAvailableModules(platformModulesData[selectedPlatform as keyof typeof platformModulesData] || []); // Populate modules
+      setAvailableModules(platformModulesData[selectedPlatform as keyof typeof platformModulesData] || []); 
     } else {
       setAvailableJobTitles([]);
       setSuggestedTechnologies([]);
-      setAvailableModules([]); // Clear modules
+      setAvailableModules([]); 
     }
   }, [selectedPlatform]);
 
@@ -205,7 +212,7 @@ export default function JobPostForm() {
         description: values.description,
         platform: values.platform, 
         technologies: values.technologies,
-        modules: values.modules || "", // Store modules, default to empty string if undefined
+        modules: values.modules || "", 
         location: values.location,
         contractType: values.contractType,
         experienceLevel: values.experienceLevel,
@@ -229,7 +236,7 @@ export default function JobPostForm() {
       form.reset();
       setSelectedPlatform('');
       setMultiSelectSelectedTech([]);
-      setMultiSelectSelectedModules([]); // Reset selected modules
+      setMultiSelectSelectedModules([]); 
       router.push('/dashboard/my-jobs'); 
     } catch (error: any) {
       toast({
@@ -340,7 +347,7 @@ export default function JobPostForm() {
                 duration: 30000, 
             });
         }
-      } else if (checkoutUrl && error.message && error.message.includes("The `price` parameter is not allowed")) {
+      } else if (checkoutUrl && error.message && error.message.includes("The \`price\` parameter is not allowed")) {
          toast({
             variant: "destructive",
             title: "Stripe Configuration Error",
@@ -353,6 +360,47 @@ export default function JobPostForm() {
       }
     } finally {
       setIsPurchasing(false);
+    }
+  };
+
+  const handleGenerateAIDescription = async () => {
+    const { platform, title, technologies, modules, experienceLevel, location, keyResponsibilitiesSummary, companyCultureSnippet, contractType } = form.getValues();
+
+    if (!keyResponsibilitiesSummary) {
+        form.setError("keyResponsibilitiesSummary", { type: "manual", message: "Please provide a summary of key responsibilities for AI generation." });
+        toast({ variant: "destructive", title: "Input Missing", description: "Key responsibilities summary is required to generate AI description." });
+        return;
+    }
+    if (!platform || !title || !technologies || !experienceLevel || !location) {
+        toast({ variant: "destructive", title: "Input Missing", description: "Platform, Title, Technologies, Experience Level, and Location are needed to generate a good AI description."});
+        // Do not return here, let the AI try its best with what it has, keyResponsibilities is most crucial for the prompt.
+    }
+
+
+    setIsGeneratingAIDescription(true);
+    try {
+        const aiInput: GenerateJobDescriptionInput = {
+            platform: platform || "General Platform", // Provide defaults if empty
+            jobTitle: title || "General Role",
+            technologies: technologies || "Relevant Technologies",
+            modules: modules || "",
+            experienceLevel: experienceLevel || "Any",
+            location: location || "Any Location",
+            keyResponsibilitiesSummary,
+            companyCultureSnippet: companyCultureSnippet || "",
+            contractType: contractType || "",
+        };
+        const result = await generateJobDescription(aiInput);
+        if (result.generatedDescription && !result.generatedDescription.startsWith("Error:")) {
+            form.setValue("description", result.generatedDescription, { shouldValidate: true });
+            toast({ title: "AI Description Generated!", description: "The job description has been populated." });
+        } else {
+            toast({ variant: "destructive", title: "AI Generation Failed", description: result.generatedDescription || "Could not generate description." });
+        }
+    } catch (error: any) {
+        toast({ variant: "destructive", title: "AI Error", description: error.message || "An unexpected error occurred with AI generation." });
+    } finally {
+        setIsGeneratingAIDescription(false);
     }
   };
 
@@ -430,7 +478,7 @@ export default function JobPostForm() {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            <fieldset disabled={!canPostJobWithCredits || isSubmitting || authLoading || isPurchasing || isFulfillingOrder} className="space-y-8">
+            <fieldset disabled={!canPostJobWithCredits || isSubmitting || authLoading || isPurchasing || isFulfillingOrder || isGeneratingAIDescription} className="space-y-8">
               
               <FormField
                 control={form.control}
@@ -445,8 +493,8 @@ export default function JobPostForm() {
                         form.setValue('title', ''); 
                         form.setValue('technologies', ''); 
                         setMultiSelectSelectedTech([]); 
-                        form.setValue('modules', ''); // Reset modules form field
-                        setMultiSelectSelectedModules([]); // Reset modules state
+                        form.setValue('modules', ''); 
+                        setMultiSelectSelectedModules([]); 
                       }} 
                       defaultValue={field.value}
                     >
@@ -494,20 +542,81 @@ export default function JobPostForm() {
                   </FormItem>
                 )}
               />
+              
+              <div className="space-y-2">
+                 <FormField
+                    control={form.control}
+                    name="keyResponsibilitiesSummary"
+                    render={({ field }) => (
+                    <FormItem>
+                        <FormLabel htmlFor="keyResponsibilitiesSummary">Key Responsibilities Summary (for AI)</FormLabel>
+                        <FormControl>
+                        <Textarea
+                            id="keyResponsibilitiesSummary"
+                            placeholder="e.g., Design and implement new features. Collaborate with product teams. Write unit and integration tests."
+                            {...field}
+                            rows={3}
+                        />
+                        </FormControl>
+                        <FormDescription>Provide 3-5 bullet points or a short summary. This helps the AI generate a detailed responsibilities section.</FormDescription>
+                        <FormMessage />
+                    </FormItem>
+                    )}
+                />
+              </div>
 
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Job Description</FormLabel>
-                    <FormControl>
-                      <Textarea placeholder="Describe the role, responsibilities, and requirements..." {...field} rows={6} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-2">
+                <FormField
+                    control={form.control}
+                    name="companyCultureSnippet"
+                    render={({ field }) => (
+                    <FormItem>
+                        <FormLabel htmlFor="companyCultureSnippet">Company Culture Snippet (Optional, for AI)</FormLabel>
+                        <FormControl>
+                        <Textarea
+                            id="companyCultureSnippet"
+                            placeholder="e.g., We foster a collaborative environment and value continuous learning. Our team is passionate about innovation."
+                            {...field}
+                            rows={2}
+                        />
+                        </FormControl>
+                        <FormDescription>A brief 1-2 sentence description of your company or team culture.</FormDescription>
+                        <FormMessage />
+                    </FormItem>
+                    )}
+                />
+              </div>
+
+
+              <div className="relative space-y-2">
+                <FormField
+                    control={form.control}
+                    name="description"
+                    render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Job Description</FormLabel>
+                        <FormControl>
+                        <Textarea placeholder="Describe the role, responsibilities, and requirements..." {...field} rows={10} />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                    )}
+                />
+                <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleGenerateAIDescription} 
+                    disabled={isGeneratingAIDescription || !form.getValues().keyResponsibilitiesSummary}
+                    className="absolute top-0 right-0 mt-1 mr-1 bg-accent text-accent-foreground hover:bg-accent/90"
+                    style={{transform: 'translateY(-100%)', marginBottom: '0.25rem'}}
+                >
+                    {isGeneratingAIDescription ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                    Generate with AI
+                </Button>
+              </div>
+
+
                <div className="grid md:grid-cols-2 gap-8">
                 <FormField
                   control={form.control}
@@ -735,7 +844,7 @@ export default function JobPostForm() {
               </div>
             </fieldset>
             {canPostJobWithCredits && !isFulfillingOrder && ( 
-              <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground transition-transform hover:scale-105" disabled={isSubmitting || authLoading || isPurchasing}>
+              <Button type="submit" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground transition-transform hover:scale-105" disabled={isSubmitting || authLoading || isPurchasing || isGeneratingAIDescription}>
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Posting...
@@ -749,3 +858,4 @@ export default function JobPostForm() {
     </Card>
   );
 }
+
