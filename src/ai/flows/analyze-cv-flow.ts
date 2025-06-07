@@ -85,12 +85,13 @@ const analyzeCvFlow = ai.defineFlow(
   async (input) => {
     const {output} = await cvAnalysisPrompt(input);
     if (!output) {
-        // Fallback in case the model returns nothing, though schema validation should catch issues
+        // This fallback should ideally not be hit if the model respects the output schema,
+        // but it's a safeguard.
         return {
             score: 0,
-            summary: "AI analysis failed to produce a valid output.",
+            summary: "AI analysis failed: The model did not return a valid structured output.",
             strengths: [],
-            weaknesses: [],
+            weaknesses: ["Model returned no valid output."],
         };
     }
     return output;
@@ -99,22 +100,45 @@ const analyzeCvFlow = ai.defineFlow(
 
 export async function analyzeCvAgainstJob(input: AnalyzeCvInput): Promise<AnalyzeCvOutput> {
   try {
+    // Attempt to run the main flow
     return await analyzeCvFlow(input);
   } catch (error: any) {
-    console.error("Error in analyzeCvAgainstJob flow:", error);
-    let summaryMessage = `Error during AI analysis: ${error.message || "Unknown error"}`;
+    console.error("Error directly caught in analyzeCvAgainstJob flow wrapper:", error);
     
-    if (error.message && (error.message.includes("mimeType") && error.message.includes("not supported"))) {
-        summaryMessage = `AI analysis fallback error: The CV file type (e.g., DOCX, PDF) is not directly supported for content analysis via its data URI by the current AI model configuration. Attempted text extraction may have failed. Application submitted without full AI insights. Original error: ${error.message}`;
-    } else if (input.cvTextContent === null || input.cvTextContent === undefined || input.cvTextContent.trim() === "") {
-        summaryMessage = `AI analysis might be incomplete: Text content could not be fully extracted from the CV, or was empty. AI analysis quality may be reduced. Application submitted. Original error (if any): ${error.message || "No specific error"}`;
+    let detailedSummary = `Error during AI analysis: ${error.message || "Unknown error"}`;
+    let specificWeakness = "AI analysis could not be completed due to an unexpected error.";
+
+    if (error.message) {
+      if (error.message.includes("mimeType") && error.message.includes("not supported")) {
+        detailedSummary = `AI analysis error: The CV file's MIME type ('${input.cvDataUri.substring(5, input.cvDataUri.indexOf(';'))}') is not directly supported for content analysis by the AI model when text extraction fails. Application submitted without full AI insights. Original error: ${error.message}`;
+        specificWeakness = `CV file format (${input.cvDataUri.substring(5, input.cvDataUri.indexOf(';'))}) not directly analyzable by AI if text extraction failed.`;
+      } else if (error.message.includes("SAFETY") || error.message.includes("blocked")) {
+        detailedSummary = `AI analysis blocked: The content of the CV or job description may have triggered the AI's safety filters. Application submitted without AI insights. Original error: ${error.message}`;
+        specificWeakness = "Content may have been blocked by AI safety filters.";
+      }
+    }
+    
+    // Check for missing text content, if no more specific error was already identified
+    const cvTextContentMissing = !input.cvTextContent || input.cvTextContent.trim() === "";
+    const cvDataUriSeemsEmpty = !input.cvDataUri || !input.cvDataUri.startsWith('data:');
+
+    if (cvTextContentMissing && !(error.message && (error.message.includes("mimeType") || error.message.includes("SAFETY")))) {
+      if (!cvDataUriSeemsEmpty) {
+         // Only cvTextContent is missing, but cvDataUri exists (so media helper might work or fail with MIME type error)
+         detailedSummary = `AI analysis might be incomplete: Text content could not be extracted from the CV (or was empty). The AI attempted to analyze the raw file, but analysis quality may be reduced. Application submitted.`;
+         specificWeakness = "Text extraction failed or CV content was empty; AI analysis quality likely reduced.";
+      } else {
+         // Both text content and a valid data URI are missing
+         detailedSummary = `AI analysis failed: No CV text content was provided, and no valid CV file data was available for the AI to process. Application submitted without AI insights.`;
+         specificWeakness = "No usable CV content (text or file data) provided for AI analysis.";
+      }
     }
 
     return {
       score: 0,
-      summary: summaryMessage,
+      summary: detailedSummary,
       strengths: [],
-      weaknesses: ["AI analysis could not be completed due to an error or lack of extractable text."],
+      weaknesses: [specificWeakness],
     };
   }
 }
