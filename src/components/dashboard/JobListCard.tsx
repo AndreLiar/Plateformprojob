@@ -5,25 +5,28 @@ import type { Job as OriginalJobType, Timestamp } from '@/lib/types'; // Origina
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Briefcase, MapPin, Zap, CheckCircle, Send, Users } from 'lucide-react';
+import { Briefcase, MapPin, Zap, CheckCircle, Send, Users, Settings2 } from 'lucide-react'; // Added Settings2 for platform category
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, useCallback } from 'react';
 import ApplyJobDialog from '@/components/jobs/ApplyJobDialog';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
-import ViewApplicantsDialog from '@/components/dashboard/recruiter/ViewApplicantsDialog'; // Import the new dialog
+import ViewApplicantsDialog from '@/components/dashboard/recruiter/ViewApplicantsDialog'; 
 
 // Define a type for the job prop that JobListCard can receive
-interface JobForCard extends Omit<OriginalJobType, 'createdAt' | 'updatedAt'> {
+// Ensure it includes 'technologies' as per the updated Job type
+interface JobForCard extends Omit<OriginalJobType, 'createdAt' | 'updatedAt' | 'platform'> {
+  id: string; // id must be present
+  platform: string; // Platform category (Salesforce, SAP)
+  technologies: string; // Specific technologies (Kubernetes, AWS)
   createdAt?: Timestamp | string;
   updatedAt?: Timestamp | string;
-  // id must be present
 }
 
 interface JobListCardProps {
   job: JobForCard;
-  isRecruiterView?: boolean; // New prop to indicate recruiter context
+  isRecruiterView?: boolean; 
 }
 
 export default function JobListCard({ job, isRecruiterView = false }: JobListCardProps) {
@@ -31,7 +34,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
   const [checkingApplicationStatus, setCheckingApplicationStatus] = useState(false);
-  const [isViewApplicantsDialogOpen, setIsViewApplicantsDialogOpen] = useState(false); // State for new dialog
+  const [isViewApplicantsDialogOpen, setIsViewApplicantsDialogOpen] = useState(false);
 
   const getProcessedDate = (dateInput: Timestamp | string | undefined): Date | null => {
     if (!dateInput) return null;
@@ -83,7 +86,10 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
 
   const showApplyAction = !isRecruiterView && userProfile?.role === 'candidate' && job.id;
 
-  const jobForDialog = job as OriginalJobType; // Assume conversion or type compatibility for dialogs
+  // Cast to OriginalJobType for dialogs that expect Timestamps if job comes from client-side fetch.
+  // If dates are strings (from server components), dialogs should ideally handle them or convert.
+  // For now, this casting might be okay if dialogs are robust or if direct Timestamp objects are passed.
+  const jobForDialog = job as OriginalJobType; 
 
   return (
     <>
@@ -93,6 +99,10 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
           <CardDescription className="text-sm text-muted-foreground">Posted {postedDate}</CardDescription>
         </CardHeader>
         <CardContent className="flex-grow space-y-3">
+          <div className="flex items-center text-sm text-muted-foreground">
+            <Settings2 className="h-4 w-4 mr-2 text-primary" />
+            Platform: {job.platform}
+          </div>
           <div className="flex items-center text-sm text-muted-foreground">
             <MapPin className="h-4 w-4 mr-2 text-primary" />
             {job.location}
@@ -107,8 +117,11 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
           </div>
           <p className="text-sm line-clamp-3">{job.description}</p>
           <div className="pt-2">
-            <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-1">Platforms/Tech:</h4>
-            <Badge variant="secondary">{job.platform}</Badge>
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-1">Tech Stack:</h4>
+            {/* Display job.technologies instead of job.platform here */}
+            {job.technologies.split(',').map(tech => tech.trim()).filter(tech => tech).map(tech => (
+              <Badge key={tech} variant="secondary" className="mr-1 mb-1">{tech}</Badge>
+            ))}
           </div>
         </CardContent>
         <CardFooter className="border-t pt-4 flex justify-end">
@@ -128,24 +141,22 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
                 <Send className="mr-2 h-4 w-4" /> Apply Now
               </Button>
             )
-          ) : null /* Placeholder for public view with no actions or other actions */}
+          ) : null}
         </CardFooter>
       </Card>
 
-      {/* Apply Dialog for Candidates */}
       {job.id && showApplyAction && !isRecruiterView && (
         <ApplyJobDialog
-          job={jobForDialog}
+          job={jobForDialog} // Pass the correctly typed job object
           open={isApplyDialogOpen}
           onOpenChange={setIsApplyDialogOpen}
           onApplicationSubmitted={handleApplicationSubmitted}
         />
       )}
 
-      {/* View Applicants Dialog for Recruiters */}
       {job.id && isRecruiterView && userProfile?.role === 'recruiter' && (
         <ViewApplicantsDialog
-            job={jobForDialog}
+            job={jobForDialog} // Pass the correctly typed job object
             open={isViewApplicantsDialogOpen}
             onOpenChange={setIsViewApplicantsDialogOpen}
         />

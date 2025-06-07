@@ -1,8 +1,8 @@
 
 import { collection, getDocs, orderBy, query, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Job, ContractType, ExperienceLevel } from '@/lib/types'; // Import original types
-import JobListCard from '@/components/dashboard/JobListCard'; // Reusing the card, suitable for public view
+import type { Job, ContractType, ExperienceLevel } from '@/lib/types'; 
+import JobListCard from '@/components/dashboard/JobListCard'; 
 import { Briefcase } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
@@ -13,13 +13,14 @@ interface SerializedJob {
   id: string;
   title: string;
   description: string;
-  platform: string;
+  platform: string; // Platform category
+  technologies: string; // Specific technologies
   location: string;
   contractType: ContractType;
   experienceLevel: ExperienceLevel;
   recruiterId: string;
-  createdAt: string; // Changed to string
-  updatedAt: string; // Changed to string
+  createdAt: string; 
+  updatedAt: string; 
 }
 
 async function getJobs(): Promise<SerializedJob[]> {
@@ -32,16 +33,17 @@ async function getJobs(): Promise<SerializedJob[]> {
     const q = query(jobsCollection, orderBy('createdAt', 'desc'));
     const querySnapshot = await getDocs(q);
     const jobs: SerializedJob[] = querySnapshot.docs.map(doc => {
-      const data = doc.data();
+      const data = doc.data() as Job; // Cast to original Job type to access fields
       // Ensure Firestore Timestamps are correctly converted to ISO strings
       return {
         id: doc.id,
         title: data.title,
         description: data.description,
-        platform: data.platform,
+        platform: data.platform, // Platform category
+        technologies: data.technologies, // Specific technologies
         location: data.location,
-        contractType: data.contractType as ContractType,
-        experienceLevel: data.experienceLevel as ExperienceLevel,
+        contractType: data.contractType,
+        experienceLevel: data.experienceLevel,
         recruiterId: data.recruiterId,
         createdAt: (data.createdAt as Timestamp).toDate().toISOString(),
         updatedAt: (data.updatedAt as Timestamp).toDate().toISOString(),
@@ -50,7 +52,7 @@ async function getJobs(): Promise<SerializedJob[]> {
     return jobs;
   } catch (error) {
     console.error("Error fetching jobs for public listing: ", error);
-    return []; // Return empty array on error
+    return []; 
   }
 }
 
@@ -93,9 +95,8 @@ export default async function BrowseJobsPage() {
       </h1>
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {jobs.map(job => (
-          // Cast to 'any' or a more specific prop type if JobListCard expects the original Job type
-          // For now, assuming JobListCard will be updated to handle string dates
-          <JobListCard key={job.id} job={job as any} />
+          // Pass the job as SerializedJob, JobListCard expects JobForCard which is compatible
+          <JobListCard key={job.id} job={job} />
         ))}
       </div>
     </div>

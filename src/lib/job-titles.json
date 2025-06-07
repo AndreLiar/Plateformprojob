@@ -1,0 +1,31 @@
+{
+  "Salesforce": [
+    "Salesforce Admin",
+    "Salesforce Developer",
+    "Salesforce Solution Architect",
+    "CPQ Specialist",
+    "Marketing Cloud Consultant",
+    "Salesforce Product Manager"
+  ],
+  "SAP": [
+    "SAP Functional Consultant (FI/CO)",
+    "SAP Functional Consultant (MM)",
+    "SAP ABAP Developer",
+    "SAP Fiori UX Designer",
+    "SAP S/4HANA Architect",
+    "SAP Basis Administrator"
+  ],
+  "Oracle": [
+    "Oracle Cloud ERP Consultant",
+    "Oracle Fusion Developer",
+    "Oracle APEX Developer",
+    "Oracle HCM Specialist",
+    "Oracle DBA"
+  ],
+  "HubSpot": [
+    "HubSpot CRM Specialist",
+    "HubSpot Marketing Automation Expert",
+    "HubSpot CMS Developer",
+    "HubSpot Admin"
+  ]
+}

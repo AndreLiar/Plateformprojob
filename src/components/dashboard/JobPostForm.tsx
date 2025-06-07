@@ -35,11 +35,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { STRIPE_PUBLISHABLE_KEY, STRIPE_JOB_POST_PRICE_ID, clientSideStripePublishableKeyPresent, clientSideStripePriceIdPresent } from "@/lib/stripeConfig"; 
 import getStripe from "@/lib/getStripe";
+import jobTitlesData from '@/lib/job-titles.json';
+
+const platforms = Object.keys(jobTitlesData) as (keyof typeof jobTitlesData)[];
 
 const jobSchema = z.object({
-  title: z.string().min(5, "Title must be at least 5 characters.").max(100),
+  platform: z.enum(platforms, { required_error: "Platform selection is required." }),
+  title: z.string().min(1, "Job title is required.").max(100),
   description: z.string().min(20, "Description must be at least 20 characters.").max(5000),
-  platform: z.string().min(2, "Platform details are required.").max(100),
+  technologies: z.string().min(2, "Specific technologies are required.").max(100), // Renamed from platform
   location: z.string().min(2, "Location is required.").max(100),
   contractType: z.enum(["Full-time", "Part-time", "Contract"]),
   experienceLevel: z.enum(["Entry", "Mid", "Senior"]),
@@ -60,6 +64,32 @@ export default function JobPostForm() {
   const [freePosts, setFreePosts] = useState<number | undefined>(undefined);
   const [purchasedPosts, setPurchasedPosts] = useState<number | undefined>(undefined);
 
+  const [selectedPlatform, setSelectedPlatform] = useState<keyof typeof jobTitlesData | ''>('');
+  const [availableJobTitles, setAvailableJobTitles] = useState<string[]>([]);
+
+  const form = useForm<z.infer<typeof jobSchema>>({
+    resolver: zodResolver(jobSchema),
+    defaultValues: {
+      platform: undefined, // Initialize platform
+      title: "",
+      description: "",
+      technologies: "", // Renamed from platform
+      location: "",
+      contractType: "Full-time",
+      experienceLevel: "Mid",
+    },
+  });
+
+  useEffect(() => {
+    if (selectedPlatform && jobTitlesData[selectedPlatform]) {
+      setAvailableJobTitles(jobTitlesData[selectedPlatform]);
+      form.setValue('title', ''); // Reset title when platform changes
+    } else {
+      setAvailableJobTitles([]);
+      form.setValue('title', '');
+    }
+  }, [selectedPlatform, form]);
+
   useEffect(() => {
     if (userProfile) {
       setFreePosts(userProfile.freePostsRemaining ?? 0);
@@ -67,7 +97,6 @@ export default function JobPostForm() {
     }
   }, [userProfile]);
 
-  // Effect to handle successful Stripe payment redirect
   const handleStripeSuccessRedirect = useCallback(async () => {
     const purchaseStatus = searchParams.get('purchase');
     const sessionId = searchParams.get('session_id');
@@ -113,19 +142,6 @@ export default function JobPostForm() {
     handleStripeSuccessRedirect();
   }, [handleStripeSuccessRedirect]);
 
-
-  const form = useForm<z.infer<typeof jobSchema>>({
-    resolver: zodResolver(jobSchema),
-    defaultValues: {
-      title: "",
-      description: "",
-      platform: "",
-      location: "",
-      contractType: "Full-time",
-      experienceLevel: "Mid",
-    },
-  });
-
   const canPostJobWithCredits = (freePosts ?? 0) > 0 || (purchasedPosts ?? 0) > 0;
 
   async function onSubmit(values: z.infer<typeof jobSchema>) {
@@ -142,7 +158,13 @@ export default function JobPostForm() {
     setIsSubmitting(true);
     try {
       await addDoc(collection(db, "jobs"), {
-        ...values,
+        title: values.title,
+        description: values.description,
+        platform: values.platform, // This is the new platform field (Salesforce, SAP etc.)
+        technologies: values.technologies, // This is the renamed field for specific tech
+        location: values.location,
+        contractType: values.contractType,
+        experienceLevel: values.experienceLevel,
         recruiterId: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -161,6 +183,7 @@ export default function JobPostForm() {
       await refreshUserProfile(); 
       toast({ title: "Job Posted!", description: "Your job listing is now live." });
       form.reset();
+      setSelectedPlatform('');
       router.push('/dashboard/my-jobs'); 
     } catch (error: any) {
       toast({
@@ -215,6 +238,7 @@ export default function JobPostForm() {
             const parsedError = await response.json();
             errorData.message = parsedError.error || parsedError.message || errorData.message;
         } catch (e) { /* Ignore if not JSON */ }
+        console.error("Checkout creation API error:", errorData.message);
         toast({ variant: "destructive", title: "Checkout Creation Failed", description: errorData.message });
         throw new Error(errorData.message); 
       }
@@ -230,18 +254,22 @@ export default function JobPostForm() {
 
       const stripe = await getStripe();
       if (!stripe) {
+        console.error("Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.");
         toast({ variant: "destructive", title: "Stripe Error", description: "Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set." });
         throw new Error('Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.');
       }
-
+      
+      console.log(`Attempting Stripe redirect with sessionId: ${checkoutSessionId}`);
       const { error: stripeJsError } = await stripe.redirectToCheckout({ sessionId: checkoutSessionId });
 
       if (stripeJsError) {
         console.error("Stripe.js redirect error object:", stripeJsError);
+        // Check for common iframe/navigation blocked error
         if (stripeJsError.message?.includes("Failed to set a named property 'href' on 'Location'") || 
             stripeJsError.message?.includes("navigation was blocked")) {
-            throw stripeJsError; 
+            throw stripeJsError; // Re-throw to be caught by the specific error handler below
         }
+        // For other Stripe.js errors
         throw new Error(stripeJsError.message || "Stripe.js reported an error during redirect setup.");
       }
     } catch (error: any) {
@@ -252,9 +280,9 @@ export default function JobPostForm() {
         console.log(`Attempting to open Stripe Checkout in new tab: ${checkoutUrl}`);
         toast({
           variant: "warning",
-          title: "Stripe Checkout: New Tab Needed",
+          title: "Stripe Checkout: New Tab Action Required",
           description: `Automatic redirect to Stripe was blocked (this is common in embedded windows like Firebase Studio). We will attempt to open Stripe Checkout in a new browser tab. Please check for it and complete your purchase. If no new tab appeared, check your browser's pop-up blocker. URL: ${checkoutUrl}`,
-          duration: 20000,
+          duration: 20000, 
         });
         const newWindow = window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
         if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
@@ -266,12 +294,14 @@ export default function JobPostForm() {
             });
         }
       } else {
+        // Generic error for other issues
         toast({ variant: "destructive", title: "Purchase Error", description: error.message || "An unexpected error occurred. Please try again." });
       }
     } finally {
       setIsPurchasing(false);
     }
   };
+
 
   if (authLoading && !userProfile && !searchParams.get('session_id')) { 
     return (
@@ -347,19 +377,65 @@ export default function JobPostForm() {
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
             <fieldset disabled={!canPostJobWithCredits || isSubmitting || authLoading || isPurchasing || isFulfillingOrder} className="space-y-8">
+              
+              <FormField
+                control={form.control}
+                name="platform"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Platform Category</FormLabel>
+                    <Select 
+                      onValueChange={(value: keyof typeof jobTitlesData) => {
+                        field.onChange(value);
+                        setSelectedPlatform(value);
+                      }} 
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a platform category" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {platforms.map(p => (
+                          <SelectItem key={p} value={p}>{p}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>Select the main platform this job relates to.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 control={form.control}
                 name="title"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Job Title</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g., Senior Platform Engineer" {...field} />
-                    </FormControl>
+                    <Select 
+                      onValueChange={field.onChange} 
+                      value={field.value} // Ensure value is controlled
+                      disabled={!selectedPlatform || availableJobTitles.length === 0}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={!selectedPlatform ? "Select a platform first" : "Select a job title"} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {availableJobTitles.map(title => (
+                          <SelectItem key={title} value={title}>{title}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>Select a job title based on the chosen platform.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
               <FormField
                 control={form.control}
                 name="description"
@@ -376,14 +452,14 @@ export default function JobPostForm() {
               <div className="grid md:grid-cols-2 gap-8">
                 <FormField
                   control={form.control}
-                  name="platform"
+                  name="technologies"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Platform/Technologies</FormLabel>
+                      <FormLabel>Specific Technologies</FormLabel>
                       <FormControl>
                         <Input placeholder="e.g., Kubernetes, AWS, Terraform" {...field} />
                       </FormControl>
-                      <FormDescription>Comma-separated list of key platforms or technologies.</FormDescription>
+                      <FormDescription>Comma-separated list of key specific technologies or tools.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

@@ -18,13 +18,12 @@ export interface Job {
   id?: string; // Firestore document ID
   title: string;
   description: string;
-  platform: string; // e.g. Kubernetes, AWS, GCP
+  platform: string; // This is the new platform category e.g. Salesforce, SAP
+  technologies: string; // Renamed from platform, for specific tech e.g. Kubernetes, AWS, GCP
   location: string;
   contractType: ContractType;
   experienceLevel: ExperienceLevel;
   recruiterId: string; // UID of the recruiter who posted
-  // companyName?: string; // Optional company name
-  // companyLogo?: string; // Optional company logo URL
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
