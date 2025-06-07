@@ -62,16 +62,16 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
-        <DialogHeader className="pr-6"> {/* Add padding to prevent overlap with close button */}
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-6">
+        <DialogHeader> {/* Removed pr-6 as parent DialogContent now has p-6 */}
           <DialogTitle className="text-2xl font-headline text-primary">{job.title}</DialogTitle>
           <DialogDescription className="flex items-center text-sm text-muted-foreground">
             <Clock className="h-4 w-4 mr-1.5" /> Posted {postedDate}
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-grow pr-6 -mr-6 pl-0.5"> {/* Adjust padding for scrollbar */}
-          <div className="space-y-4 py-4">
+        <ScrollArea className="flex-grow min-h-0"> {/* Simplified ScrollArea classes */}
+          <div className="space-y-4 py-4"> {/* py-4 for internal vertical padding of scrollable content */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <div className="flex items-start">
                 <Settings2 className="h-4 w-4 mr-2 mt-0.5 text-primary shrink-0" />
