@@ -20,6 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, UploadCloud } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+// import { analyzeCvAgainstJob, type AnalyzeCvInput, type AnalyzeCvOutput } from '@/ai/flows/analyze-cv-flow';
 
 interface ApplyJobDialogProps {
   job: Job;
@@ -67,20 +68,23 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
       toast({ variant: 'destructive', title: 'Error', description: 'Please select a CV to upload.' });
       return;
     }
-    if (uploadError) {
+    if (uploadError) { // This checks client-side validation errors
       toast({ variant: 'destructive', title: 'File Error', description: uploadError });
       return;
     }
 
     setIsSubmitting(true);
-    setUploadError(null);
+    setUploadError(null); // Clear previous API errors
     setSubmissionStatus('Processing application...');
 
     let cvUrl: string | null = null;
     let cloudinaryPublicId: string | null = null;
-    let cvUploadFailedMessage: string | null = null;
+    // let extractedTextForAI: string | null = null; // AI feature deferred
+    // let extractionErrorFromAPI: string | null = null; // AI feature deferred
+    let cvProcessingErrorMessage: string | null = null;
 
-    // --- Step 1: Attempt to upload CV ---
+
+    // --- Step 1: Attempt to upload CV and get URL ---
     try {
       setSubmissionStatus('Uploading CV...');
       const formData = new FormData();
@@ -92,61 +96,72 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
       });
 
       if (uploadResponse.ok) {
-        const uploadResult = await uploadResponse.json();
-        if (uploadResult.success && uploadResult.url) {
-          cvUrl = uploadResult.url;
-          cloudinaryPublicId = uploadResult.publicId || null;
-          if (uploadResult.extractionError) { // Text extraction failed but Cloudinary upload succeeded
-             toast({ variant: "default", title: "CV Info", description: `CV uploaded. Note: ${uploadResult.extractionError}`, duration: 7000 });
+        try {
+          const uploadResult = await uploadResponse.json();
+          if (uploadResult.success && uploadResult.url) {
+            cvUrl = uploadResult.url;
+            cloudinaryPublicId = uploadResult.publicId || null;
+            // extractedTextForAI = uploadResult.extractedText || null; // AI feature deferred
+            // extractionErrorFromAPI = uploadResult.extractionError || null; // AI feature deferred
+            if (uploadResult.extractionError) {
+               toast({ variant: "default", title: "CV Upload Note", description: `CV uploaded. Note: ${uploadResult.extractionError}`, duration: 7000 });
+            }
+          } else {
+            // API responded OK, but success:false or no URL
+            cvProcessingErrorMessage = uploadResult.error || uploadResult.extractionError || 'CV uploaded, but server reported issues or no URL was returned.';
+            setUploadError(cvProcessingErrorMessage);
           }
-        } else {
-          // API responded OK, but success:false or no URL in JSON
-          cvUploadFailedMessage = uploadResult.error || uploadResult.extractionError || 'CV uploaded, but server reported processing issues or no URL was returned.';
-          setUploadError(cvUploadFailedMessage);
+        } catch (jsonParseError: any) {
+          // This catches "Unexpected token '<'" if API returns HTML even on OK status
+          console.error("Error parsing JSON from /api/upload-cv (even with OK status):", jsonParseError);
+          cvProcessingErrorMessage = "CV processing failed: Server returned an unexpected response format.";
+          setUploadError(cvProcessingErrorMessage);
         }
       } else {
         // API responded with an error status (e.g., 500, 400)
         let errorDetail = `CV upload API failed with status: ${uploadResponse.status}.`;
         try {
-          const errorData = await uploadResponse.json(); // Try to parse JSON error
+          // Try to parse error JSON, but be ready for HTML
+          const errorData = await uploadResponse.json();
           errorDetail = errorData.error || errorDetail;
         } catch (e) {
-          // Response was not JSON (likely HTML error page - the "Unexpected token '<'" issue source)
-          errorDetail = `CV upload failed: Server returned an unexpected response.`;
-          console.error("CV Upload: Non-JSON response from API", await uploadResponse.text()); // Log the HTML for debugging
+          // This catches "Unexpected token '<'" if API returns HTML on error status
+          console.error("Error parsing JSON from /api/upload-cv (on error status):", e);
+          errorDetail = `CV processing failed: Server returned an unexpected response. (Status: ${uploadResponse.status})`;
         }
-        cvUploadFailedMessage = errorDetail;
-        setUploadError(cvUploadFailedMessage);
+        cvProcessingErrorMessage = errorDetail;
+        setUploadError(cvProcessingErrorMessage);
       }
     } catch (networkOrFetchError: any) {
       // Network error or other issue with fetch itself
       console.error('Critical CV Upload Fetch Error:', networkOrFetchError);
-      cvUploadFailedMessage = `CV processing failed due to a network or client-side error: ${networkOrFetchError.message}.`;
-      setUploadError(cvUploadFailedMessage);
+      cvProcessingErrorMessage = `CV processing failed due to a network or client-side error: ${networkOrFetchError.message}.`;
+      setUploadError(cvProcessingErrorMessage);
     }
 
-    if (cvUploadFailedMessage && !cvUrl) { // If upload failed and we don't have a URL
+    if (cvProcessingErrorMessage) {
       toast({
         variant: "destructive",
-        title: "CV Upload Failed",
-        description: `${cvUploadFailedMessage} Your application will be submitted, but the CV might not be available to the recruiter.`,
+        title: "CV Processing Issue",
+        description: `${cvProcessingErrorMessage} Your application will be submitted, but the CV might not be available to the recruiter.`,
         duration: 10000
       });
-    } else if (cvUploadFailedMessage && cvUrl) { // CV was uploaded but there were other non-critical issues
-        toast({
-        variant: "warning",
-        title: "CV Upload Note",
-        description: `${cvUploadFailedMessage} Your application will proceed.`,
-        duration: 7000
+    } else if (cvUrl) {
+      toast({
+        variant: "default",
+        title: "CV Uploaded",
+        description: "Your CV has been processed.",
+        duration: 3000
       });
     }
 
 
-    // --- Step 2: Save application to Firestore, regardless of CV upload outcome for now ---
+    // --- Step 2: Save application to Firestore ---
+    // This step proceeds even if cvUrl is null (CV upload failed)
     try {
       setSubmissionStatus('Saving application...');
       const appCollectionRef = collection(db, 'applications');
-      const applicationData = {
+      const applicationData: any = { // Use 'any' temporarily for AI fields
         candidateId: user.uid,
         candidateName: userProfile.displayName || user.displayName || user.email,
         candidateEmail: userProfile.email || user.email,
@@ -157,21 +172,56 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         cloudinaryPublicId: cloudinaryPublicId, // This will be null if upload failed
         appliedAt: serverTimestamp(),
         status: 'Applied',
-        // AI fields are "Coming Soon"
-        aiScore: null,
-        aiAnalysisSummary: "AI Analysis: Coming Soon",
-        aiStrengths: [],
-        aiWeaknesses: [],
+        aiScore: null, // AI feature deferred
+        aiAnalysisSummary: "AI Analysis: Coming Soon", // AI feature deferred
+        aiStrengths: [], // AI feature deferred
+        aiWeaknesses: [], // AI feature deferred
       };
 
       await addDoc(appCollectionRef, applicationData);
+
+      // --- AI Analysis (Currently Deferred) ---
+      // if (cvFile && (extractedTextForAI || cvUrl /* cvDataUri could be generated here if needed */)) {
+      //   setSubmissionStatus('Performing AI analysis...');
+      //   const cvDataUri = await new Promise<string>((resolve, reject) => {
+      //       const reader = new FileReader();
+      //       reader.onload = () => resolve(reader.result as string);
+      //       reader.onerror = (error) => reject(error);
+      //       reader.readAsDataURL(cvFile);
+      //   });
+
+      //   try {
+      //     const aiInput: AnalyzeCvInput = {
+      //       cvDataUri: cvDataUri, // Use the actual data URI
+      //       cvTextContent: extractedTextForAI || undefined,
+      //       jobTitle: job.title,
+      //       jobDescription: job.description,
+      //       jobTechnologies: job.technologies,
+      //       jobExperienceLevel: job.experienceLevel,
+      //     };
+      //     const aiResult: AnalyzeCvOutput = await analyzeCvAgainstJob(aiInput);
+          
+      //     const appDocRef = doc(db, 'applications', appId); // Assuming appId is the ID from addDoc above
+      //     await updateDoc(appDocRef, {
+      //       aiScore: aiResult.score,
+      //       aiAnalysisSummary: aiResult.summary,
+      //       aiStrengths: aiResult.strengths,
+      //       aiWeaknesses: aiResult.weaknesses,
+      //     });
+      //     setSubmissionStatus('AI analysis complete.');
+      //   } catch (aiError: any) {
+      //     console.error('AI analysis error:', aiError);
+      //     setSubmissionStatus('AI analysis failed. Application submitted without AI insights.');
+      //     toast({ variant: "warning", title: "AI Analysis Issue", description: `Could not perform AI analysis: ${aiError.message}. Application still submitted.`});
+      //   }
+      // }
 
       toast({
         title: 'Application Submitted!',
         description: `You've successfully applied for ${job.title}. ${cvUrl ? 'Your CV has been attached.' : 'There was an issue attaching your CV; it may not be available to the recruiter.'}`
       });
       onApplicationSubmitted();
-      onOpenChange(false);
+      onOpenChange(false); // Close dialog
       setCvFile(null);
       setUploadError(null);
       const fileInput = document.getElementById('cv-upload') as HTMLInputElement;
@@ -196,7 +246,7 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
     <Dialog open={open} onOpenChange={(isOpen) => {
         if (!isSubmitting) {
             onOpenChange(isOpen);
-            if (!isOpen) {
+            if (!isOpen) { // Reset state when dialog is closed
                 setCvFile(null);
                 setUploadError(null);
                 setSubmissionStatus('');
@@ -265,3 +315,5 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
     </Dialog>
   );
 }
+
+    
