@@ -28,7 +28,11 @@ const GenerateJobDescriptionOutputSchema = z.object({
 });
 export type GenerateJobDescriptionOutput = z.infer<typeof GenerateJobDescriptionOutputSchema>;
 
-const jobDescriptionGeneratorPrompt = ai.definePrompt({
+// Define the flow and prompt directly within the exported function's scope
+// or ensure they are not treated as exports.
+// For this attempt, we keep them separate but ensure no export keyword.
+
+const jobDescriptionPromptDefinition = {
     name: 'jobDescriptionPrompt',
     input: { schema: GenerateJobDescriptionInputSchema },
     output: { schema: GenerateJobDescriptionOutputSchema },
@@ -87,16 +91,18 @@ const jobDescriptionGeneratorPrompt = ai.definePrompt({
 
       The output should be a single string containing the complete job description. Ensure good spacing between paragraphs.
     `,
-});
+};
 
-const jobDescriptionGeneratorFlow = ai.defineFlow(
+const _jobDescriptionGeneratorFlow = ai.defineFlow( // Renamed to avoid potential conflict if Next.js somehow sees it
   {
-    name: 'jobDescriptionGeneratorFlow',
+    name: 'jobDescriptionGeneratorFlowInternal', // Changed name slightly
     inputSchema: GenerateJobDescriptionInputSchema,
     outputSchema: GenerateJobDescriptionOutputSchema,
   },
   async (input) => {
-    const { output } = await jobDescriptionGeneratorPrompt(input);
+    // Define the prompt object here to ensure it's not seen as a module-level export
+    const prompt = ai.definePrompt(jobDescriptionPromptDefinition);
+    const { output } = await prompt(input);
     if (!output) {
         return { generatedDescription: "Error: Could not generate job description. The AI model did not return a valid output." };
     }
@@ -106,7 +112,7 @@ const jobDescriptionGeneratorFlow = ai.defineFlow(
 
 export async function generateJobDescription(input: GenerateJobDescriptionInput): Promise<GenerateJobDescriptionOutput> {
   try {
-    return await jobDescriptionGeneratorFlow(input);
+    return await _jobDescriptionGeneratorFlow(input);
   } catch (error: any) {
     console.error("Error in generateJobDescription flow:", error);
     return { generatedDescription: `Error generating description: ${error.message || "Unknown error"}` };
