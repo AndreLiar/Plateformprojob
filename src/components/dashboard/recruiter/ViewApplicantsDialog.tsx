@@ -14,10 +14,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogClose,
-  DialogFooter, // Added DialogFooter
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, ExternalLink, UserX, FileText, AlertTriangle, TrendingUp, ChevronsUpDown, Info } from 'lucide-react';
+import { Loader2, ExternalLink, UserX, FileText, AlertTriangle, TrendingUp, ChevronsUpDown, Info, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -36,22 +36,13 @@ interface ViewApplicantsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const statusColors: { [key: string]: string } = {
-    "Applied": "bg-green-100 text-green-800 border-green-300",
-    "Under Review": "bg-yellow-100 text-yellow-800 border-yellow-300",
-    "Interviewing": "bg-blue-100 text-blue-800 border-blue-300",
-    "Offer Extended": "bg-teal-100 text-teal-800 border-teal-300",
-    "Rejected": "bg-red-100 text-red-800 border-red-300",
-    "Withdrawn": "bg-gray-100 text-gray-800 border-gray-300",
-};
-
-const firestoreIndexCreationUrl = "https://console.firebase.google.com/v1/r/project/marketplace-79e9c/firestore/indexes?create_composite=ClZwcm9qZWN0cy9tYXJrZXRwbGFjZS03OWU5Yy9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvYXBwbGljYXRpb25zL2luZGV4ZXMvXxABGgkKBWpvYklkEAEaDQoJYXBwbGllZEF0EAIaDAoIX19uYW1lX18QAg"; // Keep this for reference
+const firestoreIndexCreationUrl = "https://console.firebase.google.com/v1/r/project/marketplace-79e9c/firestore/indexes?create_composite=ClZwcm9qZWN0cy9tYXJrZXRwbGFjZS03OWU5Yy9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvYXBwbGljYXRpb25zL2luZGV4ZXMvXxABGgkKBWpvYklkEAEaDQoJYXBwbGllZEF0EAIaDAoIX19uYW1lX18QAg"; 
 
 export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewApplicantsDialogProps) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(false);
   const [missingIndexError, setMissingIndexError] = useState(false);
-  const [sortOrder, setSortOrder] = useState<'score_desc' | 'applied_desc'>('score_desc');
+  // const [sortOrder, setSortOrder] = useState<'score_desc' | 'applied_desc'>('applied_desc'); // Default to appliedAt initially
   const { toast } = useToast();
 
   const fetchApplications = useCallback(async () => {
@@ -60,11 +51,10 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
     setMissingIndexError(false);
     try {
       const applicationsRef = collection(db, 'applications');
-      // We will sort client-side after fetching, simplifies Firestore query
       const q = query(
         applicationsRef,
         where('jobId', '==', job.id),
-        orderBy('appliedAt', 'desc') // Base query order
+        orderBy('appliedAt', 'desc') 
       );
       const querySnapshot = await getDocs(q);
       let fetchedApplications = querySnapshot.docs.map(doc => ({
@@ -72,19 +62,12 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
         ...doc.data(),
       } as Application));
 
-      // Client-side sorting based on current sortOrder
-      if (sortOrder === 'score_desc') {
-        fetchedApplications.sort((a, b) => (b.aiScore ?? -1) - (a.aiScore ?? -1));
-      } else { // 'applied_desc' is already handled by Firestore or can be re-applied if needed
-        // fetchedApplications.sort((a, b) => b.appliedAt.toMillis() - a.appliedAt.toMillis());
-      }
-
       setApplications(fetchedApplications);
     } catch (error: any) {
       console.error("Error fetching applications:", error);
       if (error.code === 'failed-precondition' && error.message.includes('query requires an index')) {
         setApplications([]);
-        setMissingIndexError(true); // This specific error implies an index is needed for the base query
+        setMissingIndexError(true); 
       } else {
         toast({
           variant: "destructive",
@@ -95,7 +78,7 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
     } finally {
       setLoading(false);
     }
-  }, [job?.id, toast, sortOrder]);
+  }, [job?.id, toast]);
 
   useEffect(() => {
     if (open) {
@@ -106,9 +89,9 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
     }
   }, [open, fetchApplications]);
 
-  const toggleSortOrder = () => {
-    setSortOrder(prev => prev === 'score_desc' ? 'applied_desc' : 'score_desc');
-  };
+  // const toggleSortOrder = () => {
+  //   setSortOrder(prev => prev === 'score_desc' ? 'applied_desc' : 'score_desc');
+  // };
 
   if (!job) return null;
 
@@ -118,11 +101,11 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
         <DialogHeader className="p-6 pb-4 border-b">
           <DialogTitle className="font-headline text-2xl text-primary">Applicants for: {job.title}</DialogTitle>
           <DialogDescription>
-            Review candidates who applied. Click headers to sort. AI insights help rank candidates.
+            Review candidates who applied. AI insights are coming soon.
           </DialogDescription>
         </DialogHeader>
         <TooltipProvider>
-        <ScrollArea className="flex-grow px-6"> {/* Added px-6 here for consistent padding */}
+        <ScrollArea className="flex-grow px-6"> 
           {loading ? (
             <div className="flex justify-center items-center h-40">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -154,20 +137,20 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
             <Table className="min-w-full">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[20%]">Candidate</TableHead>
-                  <TableHead className="w-[20%]">Email</TableHead>
-                  <TableHead className="w-[10%] cursor-pointer hover:bg-muted/50" onClick={toggleSortOrder}>
+                  <TableHead className="w-[25%]">Candidate</TableHead>
+                  <TableHead className="w-[25%]">Email</TableHead>
+                  <TableHead className="w-[10%]">
                     <div className="flex items-center">
-                      AI Score <ChevronsUpDown className="ml-1 h-3 w-3 opacity-50" />
-                      {sortOrder === 'score_desc' && <TrendingUp className="ml-1 h-3 w-3 text-primary" />}
+                      <Sparkles className="mr-1 h-3 w-3 text-primary opacity-70" /> AI Score
                     </div>
                   </TableHead>
-                  <TableHead className="w-[25%]">AI Summary</TableHead>
-                  <TableHead className="w-[15%] cursor-pointer hover:bg-muted/50" onClick={toggleSortOrder}>
+                  <TableHead className="w-[20%]">
                      <div className="flex items-center">
-                        Applied On <ChevronsUpDown className="ml-1 h-3 w-3 opacity-50" />
-                        {sortOrder === 'applied_desc' && <TrendingUp className="ml-1 h-3 w-3 text-primary" />}
+                        <Info className="mr-1 h-3 w-3 text-primary opacity-70" /> AI Summary
                     </div>
+                  </TableHead>
+                  <TableHead className="w-[10%]">
+                     Applied On
                   </TableHead>
                   <TableHead className="w-[10%] text-right">CV</TableHead>
                 </TableRow>
@@ -177,44 +160,11 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
                   <TableRow key={app.id} className="hover:bg-muted/20">
                     <TableCell className="font-medium py-3">{app.candidateName || 'N/A'}</TableCell>
                     <TableCell className="py-3">{app.candidateEmail || 'N/A'}</TableCell>
-                    <TableCell className="py-3 font-semibold text-center">
-                      {typeof app.aiScore === 'number' ? (
-                        <Badge variant={app.aiScore > 75 ? "default" : app.aiScore > 50 ? "secondary" : "outline"}
-                               className={app.aiScore > 75 ? "bg-green-500 text-white" : app.aiScore > 50 ? "bg-yellow-500 text-black" : "border-destructive text-destructive" }>
-                            {app.aiScore}/100
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">N/A</Badge>
-                      )}
+                    <TableCell className="py-3 text-center text-muted-foreground">
+                        <Badge variant="outline" className="text-xs">N/A</Badge>
                     </TableCell>
                     <TableCell className="py-3 text-xs text-muted-foreground">
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <p className="line-clamp-2 cursor-help">
-                                    {app.aiAnalysisSummary || (app.aiScore === 0 && app.aiAnalysisSummary?.startsWith("Error") ? "AI Error" : "Not analyzed yet")}
-                                </p>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" align="start" className="max-w-xs bg-popover text-popover-foreground p-2 rounded shadow-lg">
-                                <p className="font-bold mb-1">AI Analysis:</p>
-                                <p className="text-xs mb-2">{app.aiAnalysisSummary || "No summary available."}</p>
-                                {app.aiStrengths && app.aiStrengths.length > 0 && (
-                                    <>
-                                        <p className="font-semibold text-xs mt-1">Strengths:</p>
-                                        <ul className="list-disc list-inside text-xs">
-                                            {app.aiStrengths.map((s, i) => <li key={i}>{s}</li>)}
-                                        </ul>
-                                    </>
-                                )}
-                                {app.aiWeaknesses && app.aiWeaknesses.length > 0 && (
-                                     <>
-                                        <p className="font-semibold text-xs mt-1">Weaknesses/Gaps:</p>
-                                        <ul className="list-disc list-inside text-xs">
-                                            {app.aiWeaknesses.map((w, i) => <li key={i}>{w}</li>)}
-                                        </ul>
-                                    </>
-                                )}
-                            </TooltipContent>
-                        </Tooltip>
+                        Coming Soon
                     </TableCell>
                     <TableCell className="py-3 text-xs">
                       {app.appliedAt?.toDate ? format(app.appliedAt.toDate(), 'PPp') : 'N/A'}
@@ -246,4 +196,3 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
     </Dialog>
   );
 }
-
