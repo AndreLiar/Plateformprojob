@@ -5,22 +5,23 @@ import type { Job as OriginalJobType, Timestamp } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Briefcase, MapPin, Zap, CheckCircle, Send, Users, Settings2, Layers } from 'lucide-react'; // Added Layers for modules
-import { formatDistanceToNow } from 'date-fns';
+import { Briefcase, MapPin, Zap, CheckCircle, Send, Users, Settings2, Layers, Eye } from 'lucide-react'; // Added Eye icon
+import { formatDistanceToNow, parseISO } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, useCallback } from 'react';
 import ApplyJobDialog from '@/components/jobs/ApplyJobDialog';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import ViewApplicantsDialog from '@/components/dashboard/recruiter/ViewApplicantsDialog'; 
+import JobDetailsDialog from '@/components/jobs/JobDetailsDialog'; // Import the new dialog
 
 
 interface JobForCard extends Omit<OriginalJobType, 'createdAt' | 'updatedAt' | 'platform'> {
   id: string; 
   platform: string; 
   technologies: string; 
-  modules?: string; // Added modules
-  createdAt?: Timestamp | string;
+  modules?: string; 
+  createdAt?: Timestamp | string; // Allow string for serialized date from server
   updatedAt?: Timestamp | string;
 }
 
@@ -32,14 +33,17 @@ interface JobListCardProps {
 export default function JobListCard({ job, isRecruiterView = false }: JobListCardProps) {
   const { user, userProfile, loading: authLoading } = useAuth();
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
+  const [isViewApplicantsDialogOpen, setIsViewApplicantsDialogOpen] = useState(false);
+  const [isJobDetailsDialogOpen, setIsJobDetailsDialogOpen] = useState(false); // State for new dialog
+
   const [hasApplied, setHasApplied] = useState(false);
   const [checkingApplicationStatus, setCheckingApplicationStatus] = useState(false);
-  const [isViewApplicantsDialogOpen, setIsViewApplicantsDialogOpen] = useState(false);
+  
 
   const getProcessedDate = (dateInput: Timestamp | string | undefined): Date | null => {
     if (!dateInput) return null;
     if (typeof dateInput === 'string') {
-      const d = new Date(dateInput);
+      const d = parseISO(dateInput); // Use parseISO for ISO strings
       return isNaN(d.getTime()) ? null : d;
     }
     if (dateInput && typeof (dateInput as Timestamp).toDate === 'function') {
@@ -81,11 +85,12 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
   
   const handleApplicationSubmitted = () => {
     setHasApplied(true); 
-    checkApplicationStatus();
+    setIsApplyDialogOpen(false); // Close apply dialog after submission
+    checkApplicationStatus(); // Re-check status
   };
 
   const showApplyAction = !isRecruiterView && userProfile?.role === 'candidate' && job.id;
-  const jobForDialog = job as OriginalJobType; 
+  const jobForDialogs = job as OriginalJobType; // Cast for dialogs expecting full OriginalJobType
 
   return (
     <>
@@ -112,15 +117,16 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
             {job.experienceLevel} Level
           </div>
           <p className="text-sm line-clamp-3">{job.description}</p>
-          <div className="pt-2">
-            <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-1">Tech Stack:</h4>
-            {(job.technologies && typeof job.technologies === 'string' ? job.technologies.split(',') : [])
-              .map(tech => tech.trim())
-              .filter(tech => tech)
-              .map(tech => (
-                <Badge key={tech} variant="secondary" className="mr-1 mb-1">{tech}</Badge>
-            ))}
-          </div>
+          
+          {(job.technologies && typeof job.technologies === 'string' && job.technologies.trim() !== "") && (
+            <div className="pt-2">
+              <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-1">Tech Stack:</h4>
+              {job.technologies.split(',').map(tech => tech.trim()).filter(tech => tech).map(tech => (
+                  <Badge key={tech} variant="secondary" className="mr-1 mb-1">{tech}</Badge>
+              ))}
+            </div>
+          )}
+
           {job.modules && job.modules.trim() !== "" && (
             <div className="pt-2">
               <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-1 flex items-center">
@@ -132,14 +138,17 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
             </div>
           )}
         </CardContent>
-        <CardFooter className="border-t pt-4 flex justify-end">
+        <CardFooter className="border-t pt-4 flex flex-wrap justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => setIsJobDetailsDialogOpen(true)}>
+            <Eye className="mr-2 h-4 w-4" /> View Details
+          </Button>
           {isRecruiterView && userProfile?.role === 'recruiter' && job.id ? (
             <Button variant="outline" size="sm" onClick={() => setIsViewApplicantsDialogOpen(true)}>
               <Users className="mr-2 h-4 w-4" /> View Applicants
             </Button>
           ) : showApplyAction && !authLoading ? (
             checkingApplicationStatus ? (
-              <Button variant="outline" size="sm" disabled>Checking Status...</Button>
+              <Button variant="outline" size="sm" disabled>Checking...</Button>
             ) : hasApplied ? (
               <Button variant="ghost" size="sm" disabled className="text-green-600">
                 <CheckCircle className="mr-2 h-4 w-4" /> Applied
@@ -153,18 +162,29 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
         </CardFooter>
       </Card>
 
-      {job.id && showApplyAction && !isRecruiterView && (
+      {/* Job Details Dialog */}
+      <JobDetailsDialog
+        job={jobForDialogs}
+        open={isJobDetailsDialogOpen}
+        onOpenChange={setIsJobDetailsDialogOpen}
+        onApply={showApplyAction && !hasApplied ? () => setIsApplyDialogOpen(true) : undefined} // Pass apply handler
+        isCandidateView={showApplyAction && !hasApplied} // Control visibility of apply button in dialog
+      />
+
+      {/* Apply Job Dialog (for candidates) */}
+      {job.id && showApplyAction && (
         <ApplyJobDialog
-          job={jobForDialog} 
+          job={jobForDialogs} 
           open={isApplyDialogOpen}
           onOpenChange={setIsApplyDialogOpen}
           onApplicationSubmitted={handleApplicationSubmitted}
         />
       )}
 
+      {/* View Applicants Dialog (for recruiters) */}
       {job.id && isRecruiterView && userProfile?.role === 'recruiter' && (
         <ViewApplicantsDialog
-            job={jobForDialog} 
+            job={jobForDialogs} 
             open={isViewApplicantsDialogOpen}
             onOpenChange={setIsViewApplicantsDialogOpen}
         />
