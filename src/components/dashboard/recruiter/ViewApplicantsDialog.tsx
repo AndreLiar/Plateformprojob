@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogClose,
+  DialogFooter, // Added DialogFooter
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, ExternalLink, UserX, FileText, AlertTriangle, TrendingUp, ChevronsUpDown, Info } from 'lucide-react';
