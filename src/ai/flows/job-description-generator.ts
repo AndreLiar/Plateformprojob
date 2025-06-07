@@ -10,7 +10,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-export const GenerateJobDescriptionInputSchema = z.object({
+const GenerateJobDescriptionInputSchema = z.object({
   jobTitle: z.string().describe("The title of the job, e.g., 'Salesforce Developer'"),
   platform: z.string().describe("The main platform category, e.g., 'Salesforce', 'SAP'"),
   technologies: z.string().describe("Comma-separated list of specific technologies, e.g., 'Apex, LWC, Visualforce'"),
@@ -23,7 +23,7 @@ export const GenerateJobDescriptionInputSchema = z.object({
 });
 export type GenerateJobDescriptionInput = z.infer<typeof GenerateJobDescriptionInputSchema>;
 
-export const GenerateJobDescriptionOutputSchema = z.object({
+const GenerateJobDescriptionOutputSchema = z.object({
   generatedDescription: z.string().describe("The AI-generated job description."),
 });
 export type GenerateJobDescriptionOutput = z.infer<typeof GenerateJobDescriptionOutputSchema>;
