@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, Info, ShoppingCart, AlertTriangle } from "lucide-react";
+import { Loader2, Info, ShoppingCart, AlertTriangle, ChevronsUpDown } from "lucide-react"; // Added ChevronsUpDown
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
@@ -37,15 +37,20 @@ import { STRIPE_PUBLISHABLE_KEY, STRIPE_JOB_POST_PRICE_ID, clientSideStripePubli
 import getStripe from "@/lib/getStripe";
 import jobTitlesData from '@/lib/job-titles.json';
 import platformTechnologiesData from '@/lib/platform-technologies.json';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+
 
 const platforms = Object.keys(jobTitlesData) as (keyof typeof jobTitlesData)[];
-type PlatformKey = keyof typeof jobTitlesData; // For stricter typing
+type PlatformKey = keyof typeof jobTitlesData; 
 
 const jobSchema = z.object({
-  platform: z.enum(platforms, { required_error: "Platform selection is required." }),
+  platform: z.enum(platforms, { required_error: "Platform category selection is required." }),
   title: z.string().min(1, "Job title is required.").max(100),
   description: z.string().min(20, "Description must be at least 20 characters.").max(5000),
-  technologies: z.string().min(2, "Specific technologies are required.").max(200), // Increased max length slightly
+  technologies: z.string().min(1, "Specific technologies are required (at least one).").max(200),
   location: z.string().min(2, "Location is required.").max(100),
   contractType: z.enum(["Full-time", "Part-time", "Contract"]),
   experienceLevel: z.enum(["Entry", "Mid", "Senior"]),
@@ -66,10 +71,6 @@ export default function JobPostForm() {
   const [freePosts, setFreePosts] = useState<number | undefined>(undefined);
   const [purchasedPosts, setPurchasedPosts] = useState<number | undefined>(undefined);
 
-  const [selectedPlatform, setSelectedPlatform] = useState<PlatformKey | ''>('');
-  const [availableJobTitles, setAvailableJobTitles] = useState<string[]>([]);
-  const [suggestedTechnologies, setSuggestedTechnologies] = useState<string[]>([]);
-
   const form = useForm<z.infer<typeof jobSchema>>({
     resolver: zodResolver(jobSchema),
     defaultValues: {
@@ -83,19 +84,40 @@ export default function JobPostForm() {
     },
   });
 
+  const [selectedPlatform, setSelectedPlatform] = useState<PlatformKey | ''>(() => form.getValues('platform') || '');
+  const [availableJobTitles, setAvailableJobTitles] = useState<string[]>([]);
+  const [suggestedTechnologies, setSuggestedTechnologies] = useState<string[]>([]);
+  const [multiSelectSelectedTech, setMultiSelectSelectedTech] = useState<string[]>(() => {
+    const initialTechString = form.getValues('technologies');
+    return initialTechString ? initialTechString.split(',').map(t => t.trim()).filter(t => t) : [];
+  });
+
+  // Effect to populate job titles and suggested technologies based on selected platform (e.g. on initial load if platform is set)
   useEffect(() => {
     if (selectedPlatform && jobTitlesData[selectedPlatform]) {
       setAvailableJobTitles(jobTitlesData[selectedPlatform]);
       setSuggestedTechnologies(platformTechnologiesData[selectedPlatform as keyof typeof platformTechnologiesData] || []);
-      form.setValue('title', ''); 
-      form.setValue('technologies', '');
     } else {
       setAvailableJobTitles([]);
       setSuggestedTechnologies([]);
-      form.setValue('title', '');
-      form.setValue('technologies', '');
     }
-  }, [selectedPlatform, form]);
+  }, [selectedPlatform]);
+
+  // Effect to sync multiSelectSelectedTech state with the form's 'technologies' value, esp. when suggestions are available
+  useEffect(() => {
+    const currentTechValue = form.watch('technologies');
+    if (selectedPlatform && suggestedTechnologies.length > 0) {
+        // Only update checkbox state if popover is the likely source of truth
+        const newSelected = currentTechValue ? currentTechValue.split(',').map(t => t.trim()).filter(t => t) : [];
+        // Avoid infinite loop by checking if arrays are different
+        if (JSON.stringify(newSelected) !== JSON.stringify(multiSelectSelectedTech)) {
+            setMultiSelectSelectedTech(newSelected);
+        }
+    }
+    // If suggestedTechnologies is empty (meaning text input is shown), multiSelectSelectedTech should ideally be cleared
+    // This is handled by the platform change logic.
+  }, [form.watch('technologies'), selectedPlatform, suggestedTechnologies, multiSelectSelectedTech]);
+
 
   useEffect(() => {
     if (userProfile) {
@@ -191,7 +213,7 @@ export default function JobPostForm() {
       toast({ title: "Job Posted!", description: "Your job listing is now live." });
       form.reset();
       setSelectedPlatform('');
-      setSuggestedTechnologies([]);
+      setMultiSelectSelectedTech([]);
       router.push('/dashboard/my-jobs'); 
     } catch (error: any) {
       toast({
@@ -256,10 +278,11 @@ export default function JobPostForm() {
 
       if (!checkoutSessionId) {
         console.error("Frontend Error: Received successful API response but no sessionId.", sessionData);
-        toast({ variant: "destructive", title: "Checkout Error", description: "Failed to get a valid session ID from the server. Please try again or contact support." });
+        const errorMsg = "Failed to get a valid session ID from the server. The Price ID used might be incorrect or for a different mode (e.g. subscription instead of one-time). Please check Stripe Price ID configuration or contact support.";
+        toast({ variant: "destructive", title: "Checkout Error", description: errorMsg });
         throw new Error('Frontend Error: Failed to retrieve a valid session ID from server response.');
       }
-
+      
       const stripe = await getStripe();
       if (!stripe) {
         console.error("Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.");
@@ -274,9 +297,9 @@ export default function JobPostForm() {
 
       if (stripeJsError) {
         console.error("Stripe.js redirect error object:", stripeJsError);
-        if (stripeJsError.message?.includes("Failed to set a named property 'href' on 'Location'") || 
+         if (stripeJsError.message?.includes("Failed to set a named property 'href' on 'Location'") || 
             stripeJsError.message?.includes("navigation was blocked")) {
-            throw stripeJsError; // Re-throw to be caught by the specific error handler below
+            throw stripeJsError; 
         }
         throw new Error(stripeJsError.message || "Stripe.js reported an error during redirect setup.");
       }
@@ -285,31 +308,32 @@ export default function JobPostForm() {
       const checkoutUrl = checkoutSessionId ? `https://checkout.stripe.com/c/pay/${checkoutSessionId}` : '';
 
       if (checkoutSessionId && error.message && (error.message.includes("Failed to set a named property 'href' on 'Location'") || error.message.includes("navigation was blocked"))) {
-        console.log(`Attempting to open Stripe Checkout in new tab: ${checkoutUrl}`);
+        console.warn(`Attempting to open Stripe Checkout in new tab due to navigation block: ${checkoutUrl}`);
         toast({
           variant: "warning",
           title: "Stripe Checkout: New Tab Action Required",
-          description: `Automatic redirect to Stripe was blocked (this is common in embedded windows). We will attempt to open Stripe Checkout in a new browser tab. Please check for it. If no new tab appeared, check your browser's pop-up blocker. URL: ${checkoutUrl}`,
-          duration: 20000, 
+          description: `Automatic redirect to Stripe was blocked (this is common in embedded windows). We will attempt to open Stripe Checkout in a new browser tab. Please check for it. If no new tab appeared, check your browser's pop-up blocker. URL (for manual copy): ${checkoutUrl}`,
+          duration: 30000, 
         });
         const newWindow = window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
         if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
             toast({
                 variant: "destructive",
                 title: "Popup Blocker Active?",
-                description: `Opening Stripe Checkout (URL: ${checkoutUrl}) in a new tab failed. Your browser's pop-up blocker might have stopped it. Please temporarily disable your pop-up blocker for this site and try purchasing again, or copy the URL to open it manually.`,
-                duration: 20000, 
+                description: `Opening Stripe Checkout in a new tab failed. Your browser's pop-up blocker might have stopped it. Please temporarily disable your pop-up blocker for this site and try purchasing again, or copy the URL to open it manually: ${checkoutUrl}`,
+                duration: 30000, 
             });
         }
-      } else if (checkoutSessionId && error.message && error.message.includes("The `price` parameter is not allowed")) {
+      } else if (checkoutUrl && error.message && error.message.includes("The `price` parameter is not allowed")) {
          toast({
             variant: "destructive",
             title: "Stripe Configuration Error",
-            description: "There's an issue with the product pricing configuration on Stripe. The 'price' parameter is not allowed for this Checkout session. Please contact support.",
-            duration: 10000,
+            description: "There's an issue with the product pricing configuration on Stripe. The 'price' parameter is not allowed for this Checkout session. This can happen if the Price ID is for a subscription but 'payment' mode is used. Please verify the Price ID and product setup in your Stripe Dashboard.",
+            duration: 20000,
         });
       } else {
-        toast({ variant: "destructive", title: "Purchase Error", description: error.message || "An unexpected error occurred. Please try again." });
+        const generalErrorMsg = error.message || "An unexpected error occurred. Please try again or contact support.";
+        toast({ variant: "destructive", title: "Purchase Error", description: `${generalErrorMsg} (Checkout URL if available: ${checkoutUrl || 'N/A'})` });
       }
     } finally {
       setIsPurchasing(false);
@@ -400,8 +424,11 @@ export default function JobPostForm() {
                     <FormLabel>Platform Category</FormLabel>
                     <Select 
                       onValueChange={(value: PlatformKey) => {
-                        field.onChange(value);
-                        setSelectedPlatform(value);
+                        field.onChange(value); // Update RHF for platform
+                        setSelectedPlatform(value); // Update local state for platform
+                        form.setValue('title', ''); // Reset title field in RHF
+                        form.setValue('technologies', ''); // Reset technologies field in RHF
+                        setMultiSelectSelectedTech([]); // Reset local state for checkboxes
                       }} 
                       defaultValue={field.value}
                     >
@@ -463,23 +490,84 @@ export default function JobPostForm() {
                   </FormItem>
                 )}
               />
-              <div className="grid md:grid-cols-2 gap-8">
+               <div className="grid md:grid-cols-2 gap-8">
                 <FormField
                   control={form.control}
                   name="technologies"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="flex flex-col">
                       <FormLabel>Specific Technologies</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Kubernetes, AWS, Terraform" {...field} />
-                      </FormControl>
+                      {!selectedPlatform ? (
+                         <Input placeholder="Select a platform category first" disabled />
+                      ) : suggestedTechnologies.length > 0 ? (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className={cn(
+                                  "w-full justify-between h-10", // Ensure consistent height
+                                  multiSelectSelectedTech.length === 0 && "text-muted-foreground"
+                                )}
+                              >
+                                {multiSelectSelectedTech.length > 0
+                                  ? multiSelectSelectedTech.length === 1 
+                                    ? multiSelectSelectedTech[0]
+                                    : `${multiSelectSelectedTech.length} technologies selected`
+                                  : "Select technologies..."}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                            <ScrollArea className="h-72">
+                              <div className="p-4 space-y-2">
+                                {suggestedTechnologies.map((tech) => (
+                                  <FormItem 
+                                    key={tech} 
+                                    className="flex flex-row items-center space-x-3 space-y-0"
+                                  >
+                                    <FormControl>
+                                      <Checkbox
+                                        checked={multiSelectSelectedTech.includes(tech)}
+                                        onCheckedChange={(checked) => {
+                                          let newSelected: string[];
+                                          if (checked) {
+                                            newSelected = [...multiSelectSelectedTech, tech];
+                                          } else {
+                                            newSelected = multiSelectSelectedTech.filter(
+                                              (selectedTech) => selectedTech !== tech
+                                            );
+                                          }
+                                          setMultiSelectSelectedTech(newSelected);
+                                          form.setValue('technologies', newSelected.join(', '), { shouldValidate: true });
+                                        }}
+                                      />
+                                    </FormControl>
+                                    <FormLabel className="font-normal text-sm">
+                                      {tech}
+                                    </FormLabel>
+                                  </FormItem>
+                                ))}
+                              </div>
+                            </ScrollArea>
+                          </PopoverContent>
+                        </Popover>
+                      ) : (
+                        <FormControl>
+                          <Input 
+                            placeholder="e.g., Kubernetes, AWS, Terraform" 
+                            {...field} // Bind react-hook-form field for manual input
+                          />
+                        </FormControl>
+                      )}
                       <FormDescription>
-                        Comma-separated list of key specific technologies or tools.
-                        {selectedPlatform && suggestedTechnologies.length > 0 && (
-                          <span className="block mt-1 text-xs">
-                            For {selectedPlatform}, consider: {suggestedTechnologies.join(', ')}.
-                          </span>
-                        )}
+                        {selectedPlatform && suggestedTechnologies.length > 0 
+                          ? "Select relevant technologies from the list."
+                          : selectedPlatform 
+                            ? `No specific suggestions for ${selectedPlatform}. List key technologies comma-separated.`
+                            : "Comma-separated list of key specific technologies or tools."}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -561,3 +649,5 @@ export default function JobPostForm() {
     </Card>
   );
 }
+
+    
