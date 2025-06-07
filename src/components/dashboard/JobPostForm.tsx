@@ -36,14 +36,16 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { STRIPE_PUBLISHABLE_KEY, STRIPE_JOB_POST_PRICE_ID, clientSideStripePublishableKeyPresent, clientSideStripePriceIdPresent } from "@/lib/stripeConfig"; 
 import getStripe from "@/lib/getStripe";
 import jobTitlesData from '@/lib/job-titles.json';
+import platformTechnologiesData from '@/lib/platform-technologies.json';
 
 const platforms = Object.keys(jobTitlesData) as (keyof typeof jobTitlesData)[];
+type PlatformKey = keyof typeof jobTitlesData; // For stricter typing
 
 const jobSchema = z.object({
   platform: z.enum(platforms, { required_error: "Platform selection is required." }),
   title: z.string().min(1, "Job title is required.").max(100),
   description: z.string().min(20, "Description must be at least 20 characters.").max(5000),
-  technologies: z.string().min(2, "Specific technologies are required.").max(100), // Renamed from platform
+  technologies: z.string().min(2, "Specific technologies are required.").max(200), // Increased max length slightly
   location: z.string().min(2, "Location is required.").max(100),
   contractType: z.enum(["Full-time", "Part-time", "Contract"]),
   experienceLevel: z.enum(["Entry", "Mid", "Senior"]),
@@ -64,16 +66,17 @@ export default function JobPostForm() {
   const [freePosts, setFreePosts] = useState<number | undefined>(undefined);
   const [purchasedPosts, setPurchasedPosts] = useState<number | undefined>(undefined);
 
-  const [selectedPlatform, setSelectedPlatform] = useState<keyof typeof jobTitlesData | ''>('');
+  const [selectedPlatform, setSelectedPlatform] = useState<PlatformKey | ''>('');
   const [availableJobTitles, setAvailableJobTitles] = useState<string[]>([]);
+  const [suggestedTechnologies, setSuggestedTechnologies] = useState<string[]>([]);
 
   const form = useForm<z.infer<typeof jobSchema>>({
     resolver: zodResolver(jobSchema),
     defaultValues: {
-      platform: undefined, // Initialize platform
+      platform: undefined,
       title: "",
       description: "",
-      technologies: "", // Renamed from platform
+      technologies: "",
       location: "",
       contractType: "Full-time",
       experienceLevel: "Mid",
@@ -83,10 +86,14 @@ export default function JobPostForm() {
   useEffect(() => {
     if (selectedPlatform && jobTitlesData[selectedPlatform]) {
       setAvailableJobTitles(jobTitlesData[selectedPlatform]);
-      form.setValue('title', ''); // Reset title when platform changes
+      setSuggestedTechnologies(platformTechnologiesData[selectedPlatform as keyof typeof platformTechnologiesData] || []);
+      form.setValue('title', ''); 
+      form.setValue('technologies', '');
     } else {
       setAvailableJobTitles([]);
+      setSuggestedTechnologies([]);
       form.setValue('title', '');
+      form.setValue('technologies', '');
     }
   }, [selectedPlatform, form]);
 
@@ -160,8 +167,8 @@ export default function JobPostForm() {
       await addDoc(collection(db, "jobs"), {
         title: values.title,
         description: values.description,
-        platform: values.platform, // This is the new platform field (Salesforce, SAP etc.)
-        technologies: values.technologies, // This is the renamed field for specific tech
+        platform: values.platform, 
+        technologies: values.technologies, 
         location: values.location,
         contractType: values.contractType,
         experienceLevel: values.experienceLevel,
@@ -184,6 +191,7 @@ export default function JobPostForm() {
       toast({ title: "Job Posted!", description: "Your job listing is now live." });
       form.reset();
       setSelectedPlatform('');
+      setSuggestedTechnologies([]);
       router.push('/dashboard/my-jobs'); 
     } catch (error: any) {
       toast({
@@ -259,17 +267,17 @@ export default function JobPostForm() {
         throw new Error('Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.');
       }
       
-      console.log(`Attempting Stripe redirect with sessionId: ${checkoutSessionId}`);
+      const checkoutUrl = `https://checkout.stripe.com/c/pay/${checkoutSessionId}`;
+      console.log(`Attempting Stripe redirect with sessionId: ${checkoutSessionId}, URL: ${checkoutUrl}`);
+      
       const { error: stripeJsError } = await stripe.redirectToCheckout({ sessionId: checkoutSessionId });
 
       if (stripeJsError) {
         console.error("Stripe.js redirect error object:", stripeJsError);
-        // Check for common iframe/navigation blocked error
         if (stripeJsError.message?.includes("Failed to set a named property 'href' on 'Location'") || 
             stripeJsError.message?.includes("navigation was blocked")) {
             throw stripeJsError; // Re-throw to be caught by the specific error handler below
         }
-        // For other Stripe.js errors
         throw new Error(stripeJsError.message || "Stripe.js reported an error during redirect setup.");
       }
     } catch (error: any) {
@@ -281,7 +289,7 @@ export default function JobPostForm() {
         toast({
           variant: "warning",
           title: "Stripe Checkout: New Tab Action Required",
-          description: `Automatic redirect to Stripe was blocked (this is common in embedded windows like Firebase Studio). We will attempt to open Stripe Checkout in a new browser tab. Please check for it and complete your purchase. If no new tab appeared, check your browser's pop-up blocker. URL: ${checkoutUrl}`,
+          description: `Automatic redirect to Stripe was blocked (this is common in embedded windows). We will attempt to open Stripe Checkout in a new browser tab. Please check for it. If no new tab appeared, check your browser's pop-up blocker. URL: ${checkoutUrl}`,
           duration: 20000, 
         });
         const newWindow = window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
@@ -293,8 +301,14 @@ export default function JobPostForm() {
                 duration: 20000, 
             });
         }
+      } else if (checkoutSessionId && error.message && error.message.includes("The `price` parameter is not allowed")) {
+         toast({
+            variant: "destructive",
+            title: "Stripe Configuration Error",
+            description: "There's an issue with the product pricing configuration on Stripe. The 'price' parameter is not allowed for this Checkout session. Please contact support.",
+            duration: 10000,
+        });
       } else {
-        // Generic error for other issues
         toast({ variant: "destructive", title: "Purchase Error", description: error.message || "An unexpected error occurred. Please try again." });
       }
     } finally {
@@ -385,7 +399,7 @@ export default function JobPostForm() {
                   <FormItem>
                     <FormLabel>Platform Category</FormLabel>
                     <Select 
-                      onValueChange={(value: keyof typeof jobTitlesData) => {
+                      onValueChange={(value: PlatformKey) => {
                         field.onChange(value);
                         setSelectedPlatform(value);
                       }} 
@@ -416,7 +430,7 @@ export default function JobPostForm() {
                     <FormLabel>Job Title</FormLabel>
                     <Select 
                       onValueChange={field.onChange} 
-                      value={field.value} // Ensure value is controlled
+                      value={field.value} 
                       disabled={!selectedPlatform || availableJobTitles.length === 0}
                     >
                       <FormControl>
@@ -459,7 +473,14 @@ export default function JobPostForm() {
                       <FormControl>
                         <Input placeholder="e.g., Kubernetes, AWS, Terraform" {...field} />
                       </FormControl>
-                      <FormDescription>Comma-separated list of key specific technologies or tools.</FormDescription>
+                      <FormDescription>
+                        Comma-separated list of key specific technologies or tools.
+                        {selectedPlatform && suggestedTechnologies.length > 0 && (
+                          <span className="block mt-1 text-xs">
+                            For {selectedPlatform}, consider: {suggestedTechnologies.join(', ')}.
+                          </span>
+                        )}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
