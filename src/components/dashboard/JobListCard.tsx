@@ -114,8 +114,11 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
           <p className="text-sm line-clamp-3">{job.description}</p>
           <div className="pt-2">
             <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-1">Tech Stack:</h4>
-            {job.technologies.split(',').map(tech => tech.trim()).filter(tech => tech).map(tech => (
-              <Badge key={tech} variant="secondary" className="mr-1 mb-1">{tech}</Badge>
+            {(job.technologies && typeof job.technologies === 'string' ? job.technologies.split(',') : [])
+              .map(tech => tech.trim())
+              .filter(tech => tech)
+              .map(tech => (
+                <Badge key={tech} variant="secondary" className="mr-1 mb-1">{tech}</Badge>
             ))}
           </div>
           {job.modules && job.modules.trim() !== "" && (
