@@ -89,40 +89,71 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
     setIsSubmitting(true);
     setUploadError(null);
     let applicationDocId: string | null = null;
+    
+    // Initialize CV processing related variables
+    let cvUrl: string | null = null;
+    let cloudinaryPublicId: string | null = null;
     let extractedTextForAI: string | null = null;
     let extractionErrorFromAPI: string | null = null;
+    let cvUploadSuccessful = false;
 
     try {
-      // 1. Upload CV to Cloudinary & attempt text extraction via our API route
+      // Step 1: Attempt CV Upload and Text Extraction
       setSubmissionStatus('Uploading CV & extracting text...');
       const formData = new FormData();
       formData.append('cv', cvFile);
 
-      const uploadResponse = await fetch('/api/upload-cv', {
-        method: 'POST',
-        body: formData,
-      });
+      try {
+        const uploadResponse = await fetch('/api/upload-cv', {
+          method: 'POST',
+          body: formData,
+        });
 
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json();
-        throw new Error(errorData.error || 'CV upload and text extraction failed.');
+        if (!uploadResponse.ok) {
+          // Attempt to parse error, but proceed even if this fails
+          let errorDetail = `CV upload API failed with status: ${uploadResponse.status}.`;
+          try {
+            const errorData = await uploadResponse.json();
+            errorDetail = errorData.error || errorDetail;
+          } catch (parseError) {
+            console.warn("Could not parse error response from /api/upload-cv:", parseError)
+            // The error is likely HTML, which caused the original "Unexpected token '<'"
+          }
+          throw new Error(errorDetail);
+        }
+
+        const uploadResult = await uploadResponse.json();
+        if (!uploadResult.success || !uploadResult.url) {
+          throw new Error(uploadResult.error || 'CV upload to Cloudinary was marked as unsuccessful by the API.');
+        }
+        
+        cvUrl = uploadResult.url;
+        cloudinaryPublicId = uploadResult.publicId;
+        extractedTextForAI = uploadResult.extractedText;
+        extractionErrorFromAPI = uploadResult.extractionError; // Can be null if successful
+        cvUploadSuccessful = true;
+
+        if (extractionErrorFromAPI) {
+          toast({ variant: "default", title: "CV Text Extraction Note", description: extractionErrorFromAPI, duration: 7000 });
+        }
+
+      } catch (cvProcessingError: any) {
+        console.error('CV Upload/Processing Error in ApplyJobDialog:', cvProcessingError);
+        setUploadError(`CV processing failed: ${cvProcessingError.message}. Application will proceed without CV.`);
+        extractionErrorFromAPI = `CV processing failed: ${cvProcessingError.message}. Application will proceed without CV.`;
+        cvUrl = null;
+        cloudinaryPublicId = null;
+        extractedTextForAI = null;
+        cvUploadSuccessful = false; // Explicitly set
+        toast({ 
+            variant: "destructive", 
+            title: "CV Upload Issue", 
+            description: `Could not process your CV: ${cvProcessingError.message}. Your application will be submitted without it. You may need to contact the recruiter separately with your CV.`,
+            duration: 10000 
+        });
       }
 
-      const uploadResult = await uploadResponse.json();
-      if (!uploadResult.success || !uploadResult.url) {
-        throw new Error(uploadResult.error || 'CV upload returned an error.');
-      }
-      const cvUrl = uploadResult.url;
-      const cloudinaryPublicId = uploadResult.publicId;
-      extractedTextForAI = uploadResult.extractedText; // Get extracted text
-      extractionErrorFromAPI = uploadResult.extractionError; // Get extraction error message
-
-      if (extractionErrorFromAPI) {
-        toast({ variant: "default", title: "CV Text Extraction Note", description: extractionErrorFromAPI, duration: 7000 });
-      }
-
-
-      // 2. Save initial application to Firestore
+      // Step 2: Save initial application to Firestore (always attempts this)
       setSubmissionStatus('Saving application...');
       const appCollectionRef = collection(db, 'applications');
       const appDocRef = await addDoc(appCollectionRef, {
@@ -132,21 +163,19 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         jobId: job.id,
         jobTitle: job.title,
         recruiterId: job.recruiterId,
-        cvUrl: cvUrl,
-        cloudinaryPublicId: cloudinaryPublicId,
+        cvUrl: cvUrl, // Will be null if upload failed
+        cloudinaryPublicId: cloudinaryPublicId, // Will be null if upload failed
         appliedAt: serverTimestamp(),
         status: 'Applied',
-        // Initial AI fields if text extraction already indicated issues
-        ...(extractionErrorFromAPI && {
-            aiScore: 0,
-            aiAnalysisSummary: extractionErrorFromAPI,
-            aiStrengths: [],
-            aiWeaknesses: ["Text extraction failed or CV content not suitable for AI analysis."],
-        })
+        // Initial AI fields, especially if CV processing failed
+        aiScore: cvUploadSuccessful && !extractionErrorFromAPI ? undefined : 0, // Set to 0 if CV processing failed
+        aiAnalysisSummary: extractionErrorFromAPI || (cvUploadSuccessful ? undefined : "CV not processed."),
+        aiStrengths: cvUploadSuccessful && !extractionErrorFromAPI ? undefined : [],
+        aiWeaknesses: cvUploadSuccessful && !extractionErrorFromAPI ? undefined : (extractionErrorFromAPI ? [extractionErrorFromAPI] : ["CV was not processed."]),
       });
       applicationDocId = appDocRef.id;
 
-      // 3. Fetch full job details for AI analysis
+      // Step 3: Fetch full job details for AI analysis
       setSubmissionStatus('Preparing for AI analysis...');
       let fullJobDetails: Job | null = null;
       if (job.id) { 
@@ -156,17 +185,32 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
           fullJobDetails = jobDocSnap.data() as Job;
         } else {
           console.warn(`Job document ${job.id} not found for AI analysis.`);
+          // If job details are missing, AI analysis will be less effective or might fail gracefully in the flow
+        }
+      }
+      
+      // Step 4: Convert CV to Data URI client-side and call AI Flow
+      // This is done even if Cloudinary upload failed, as a last resort for AI if cvFile is still present.
+      // The AI flow should handle problematic cvDataUri or missing cvTextContent.
+      let cvDataUriForAI: string | null = null;
+      if (cvFile) { // cvFile is from the input, should still be here
+        try {
+          cvDataUriForAI = await fileToDataUri(cvFile);
+        } catch (dataUriError) {
+          console.error("Error converting CV to Data URI client-side:", dataUriError);
+          // AI analysis will proceed with cvDataUriForAI as null
         }
       }
 
-      // 4. Convert CV to Data URI for fallback, and call AI Flow
-      if (fullJobDetails && !extractionErrorFromAPI) { // Only proceed with AI if text extraction seemed okay
-        setSubmissionStatus('Analyzing CV with AI...');
-        const cvDataUri = await fileToDataUri(cvFile); // Still generate data URI for fallback/other types
+
+      if (fullJobDetails && applicationDocId) { 
+        // Only run AI analysis if we have job details and an application document.
+        // The AI flow is expected to handle null/undefined inputs for CV data gracefully.
+        setSubmissionStatus('Analyzing CV with AI (if CV was processed)...');
         
         const aiInput: AnalyzeCvInput = {
-          cvDataUri,
-          cvTextContent: extractedTextForAI || undefined, // Pass extracted text if available
+          cvDataUri: cvDataUriForAI || "", // Pass empty string if null, schema expects string
+          cvTextContent: extractedTextForAI || undefined, 
           jobTitle: fullJobDetails.title,
           jobDescription: fullJobDetails.description,
           jobTechnologies: fullJobDetails.technologies,
@@ -174,44 +218,30 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         };
         const aiResult = await analyzeCvAgainstJob(aiInput);
 
-        // 5. Update application with AI insights
-        if (aiResult && applicationDocId) {
+        // Step 5: Update application with AI insights
+        if (aiResult) { // aiResult should always be returned by the flow, even if it's an error structure
              setSubmissionStatus('Saving AI insights...');
              await updateDoc(doc(db, 'applications', applicationDocId), {
-                aiScore: aiResult.score,
+                aiScore: aiResult.score, // score could be 0 if analysis failed
                 aiAnalysisSummary: aiResult.summary,
                 aiStrengths: aiResult.strengths || [],
                 aiWeaknesses: aiResult.weaknesses || [],
             });
              toast({ title: 'AI Analysis Complete!', description: 'CV insights saved with your application.' });
-        } else if (applicationDocId) {
-            // This case might be covered if aiResult comes back with an error message already
-            const summaryMessage = aiResult?.summary || "AI analysis did not return specific insights, but application was submitted.";
-            await updateDoc(doc(db, 'applications', applicationDocId), {
-                aiScore: 0, // Default score if AI result is problematic
-                aiAnalysisSummary: summaryMessage,
-            });
-            toast({ variant: 'default', title: 'AI Analysis Note', description: summaryMessage });
         }
-      } else if (fullJobDetails && extractionErrorFromAPI && applicationDocId) {
-         // AI analysis was skipped due to earlier text extraction error, ensure Firestore reflects this if not already set
+      } else if (applicationDocId) {
+         // AI analysis skipped or failed due to missing job details or earlier critical CV error
+         // The initial save to Firestore already included error placeholders for AI fields.
+         const reason = !fullJobDetails ? "full job details not found" : "critical CV processing error";
          await updateDoc(doc(db, 'applications', applicationDocId), {
             aiScore: 0,
-            aiAnalysisSummary: extractionErrorFromAPI, // Use the error from extraction
-            aiStrengths: [],
-            aiWeaknesses: ["Text extraction failed, AI analysis skipped."],
-        });
-         toast({ variant: 'default', title: 'AI Analysis Skipped', description: 'Text extraction from CV failed. Application submitted without AI insights.' });
-      } else if (!fullJobDetails && applicationDocId) {
-         await updateDoc(doc(db, 'applications', applicationDocId), {
-            aiScore: 0,
-            aiAnalysisSummary: 'Full job details not found, AI analysis skipped.',
+            aiAnalysisSummary: `AI analysis skipped: ${reason}.`,
          });
-         toast({ variant: 'default', title: 'AI Analysis Skipped', description: 'Full job details not found. Application submitted without AI insights.' });
+         toast({ variant: 'default', title: 'AI Analysis Skipped', description: `AI analysis was skipped because ${reason}. Application submitted.` });
       }
 
 
-      toast({ title: 'Application Submitted!', description: `You've successfully applied for ${job.title}.` });
+      toast({ title: 'Application Submitted!', description: `You've successfully applied for ${job.title}. ${!cvUploadSuccessful ? "Note: There was an issue with your CV upload." : ""}` });
       onApplicationSubmitted();
       onOpenChange(false);
       setCvFile(null);
@@ -219,16 +249,15 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
       if (fileInput) fileInput.value = '';
 
 
-    } catch (error: any)
-     {
-      console.error('Application submission error:', error);
-      setUploadError(error.message || 'An unexpected error occurred.');
-      toast({ variant: 'destructive', title: 'Application Failed', description: error.message || 'Could not submit application.' });
-      if (applicationDocId) { // If app doc created but subsequent steps failed, mark as error
+    } catch (error: any) { // This outer catch is for errors NOT related to initial CV processing
+      console.error('General application submission error:', error);
+      setUploadError(error.message || 'An unexpected error occurred during final submission steps.');
+      toast({ variant: 'destructive', title: 'Application Submission Failed', description: error.message || 'Could not submit application.' });
+      if (applicationDocId) { // If app doc created but subsequent steps failed (e.g., AI flow call itself, or Firestore update)
         try {
           await updateDoc(doc(db, 'applications', applicationDocId), {
-            status: 'Error', // Or some other indicator
-            aiAnalysisSummary: `Application submission failed after initial save: ${error.message}`,
+            status: 'Error', 
+            aiAnalysisSummary: (extractionErrorFromAPI ? extractionErrorFromAPI + " Additionally, " : "") + `Application submission encountered an error: ${error.message}`,
             aiScore: 0,
           });
         } catch (updateError) {
@@ -314,3 +343,4 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
     </Dialog>
   );
 }
+
