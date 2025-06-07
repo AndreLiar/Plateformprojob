@@ -1,10 +1,44 @@
 
+"use client";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { UserCircle, Search, Briefcase, FileText } from "lucide-react";
+import { UserCircle, Search, Briefcase, FileText, Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useEffect, useState } from "react";
+import { db } from "@/lib/firebase";
+import { collection, query, where, getCountFromServer } from "firebase/firestore";
 
 export default function CandidateDashboardPage() {
+  const { user, loading: authLoading } = useAuth();
+  const [applicationCount, setApplicationCount] = useState<number | null>(null);
+  const [loadingStats, setLoadingStats] = useState(true);
+
+  useEffect(() => {
+    if (user) {
+      const fetchApplicationCount = async () => {
+        setLoadingStats(true);
+        try {
+          const applicationsRef = collection(db, "applications");
+          const q = query(applicationsRef, where("candidateId", "==", user.uid));
+          const snapshot = await getCountFromServer(q);
+          setApplicationCount(snapshot.data().count);
+        } catch (error) {
+          console.error("Error fetching application count:", error);
+          setApplicationCount(0); // Default to 0 on error
+        } finally {
+          setLoadingStats(false);
+        }
+      };
+      fetchApplicationCount();
+    } else if (!authLoading) {
+      // Not logged in, not loading auth, so no stats to load
+      setApplicationCount(0);
+      setLoadingStats(false);
+    }
+  }, [user, authLoading]);
+
   return (
     <div className="space-y-8">
       <Card className="shadow-lg rounded-lg overflow-hidden">
@@ -62,20 +96,35 @@ export default function CandidateDashboardPage() {
             <Button variant="link" asChild className="px-0 text-primary">
                 <Link href="/dashboard/candidate/profile">Update Profile Now &rarr;</Link>
             </Button>
-            {/* Consider adding a progress bar here based on profile completion status in the future */}
           </CardContent>
         </Card>
         <Card className="shadow-md rounded-lg">
           <CardHeader>
-            <CardTitle className="text-xl">Quick Stats</CardTitle> {/* Placeholder */}
+            <CardTitle className="text-xl">Quick Stats</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground text-sm">View a summary of your job search activity here soon.</p>
-            {/* Placeholder for stats like applications sent, saved jobs, profile views */}
-             <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-                <li><span className="font-medium text-foreground">0</span> Applications Sent (Placeholder)</li>
-                <li><span className="font-medium text-foreground">0</span> Saved Jobs (Placeholder)</li>
-            </ul>
+            {authLoading || loadingStats ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <span className="ml-2 text-muted-foreground">Loading stats...</span>
+              </div>
+            ) : (
+              <>
+                <p className="text-muted-foreground text-sm mb-3">
+                  A summary of your job search activity.
+                </p>
+                <ul className="space-y-1 text-sm">
+                  <li>
+                    <span className="font-medium text-foreground">{applicationCount ?? 0}</span>
+                    <span className="text-muted-foreground"> Applications Sent</span>
+                  </li>
+                  <li>
+                    <span className="font-medium text-foreground">0</span>
+                    <span className="text-muted-foreground"> Saved Jobs (Coming Soon)</span>
+                  </li>
+                </ul>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
