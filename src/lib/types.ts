@@ -44,4 +44,9 @@ export interface Application {
   appliedAt: Timestamp;
   status: ApplicationStatus;
   // coverLetter?: string; // Optional
+  aiScore?: number; // AI-generated score (e.g., 0-100)
+  aiAnalysisSummary?: string; // Brief AI summary
+  aiStrengths?: string[]; // Array of AI-identified strengths
+  aiWeaknesses?: string[]; // Array of AI-identified weaknesses/gaps
 }
+

@@ -17,9 +17,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, UploadCloud } from 'lucide-react';
+import { Loader2, UploadCloud, Brain } from 'lucide-react';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { analyzeCvAgainstJob, type AnalyzeCvInput } from '@/ai/flows/analyze-cv-flow';
 
 interface ApplyJobDialogProps {
   job: Job;
@@ -28,11 +29,25 @@ interface ApplyJobDialogProps {
   onApplicationSubmitted: () => void; // Callback to refresh job list or state
 }
 
+// Helper to convert File to Data URI
+const fileToDataUri = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve(reader.result as string);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
+
 export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationSubmitted }: ApplyJobDialogProps) {
   const { user, userProfile } = useAuth();
   const { toast } = useToast();
   const [cvFile, setCvFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionStatus, setSubmissionStatus] = useState<string>('');
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -66,16 +81,18 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
       toast({ variant: 'destructive', title: 'Error', description: 'Please select a CV to upload.' });
       return;
     }
-    if (uploadError) { // Prevent submission if there's a known client-side file error
+    if (uploadError) {
       toast({ variant: 'destructive', title: 'File Error', description: uploadError });
       return;
     }
 
     setIsSubmitting(true);
     setUploadError(null);
+    let applicationDocId: string | null = null;
 
     try {
       // 1. Upload CV to Cloudinary via our API route
+      setSubmissionStatus('Uploading CV...');
       const formData = new FormData();
       formData.append('cv', cvFile);
 
@@ -96,55 +113,114 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
       const cvUrl = uploadResult.url;
       const cloudinaryPublicId = uploadResult.publicId;
 
-
-      // 2. Save application to Firestore
-      await addDoc(collection(db, 'applications'), {
+      // 2. Save initial application to Firestore
+      setSubmissionStatus('Saving application...');
+      const appCollectionRef = collection(db, 'applications');
+      const appDocRef = await addDoc(appCollectionRef, {
         candidateId: user.uid,
         candidateName: userProfile.displayName || user.displayName || user.email,
         candidateEmail: userProfile.email || user.email,
         jobId: job.id,
-        jobTitle: job.title, // Denormalizing job title
+        jobTitle: job.title,
         recruiterId: job.recruiterId,
         cvUrl: cvUrl,
         cloudinaryPublicId: cloudinaryPublicId,
         appliedAt: serverTimestamp(),
         status: 'Applied',
       });
+      applicationDocId = appDocRef.id;
+
+      // 3. Fetch full job details for AI analysis
+      setSubmissionStatus('Preparing for AI analysis...');
+      let fullJobDetails: Job | null = null;
+      if (job.id) { // Ensure job.id is defined
+        const jobDocRef = doc(db, 'jobs', job.id);
+        const jobDocSnap = await getDoc(jobDocRef);
+        if (jobDocSnap.exists()) {
+          fullJobDetails = jobDocSnap.data() as Job;
+        } else {
+          console.warn(`Job document ${job.id} not found for AI analysis.`);
+        }
+      }
+
+
+      // 4. Convert CV to Data URI and call AI Flow (if job details are available)
+      if (fullJobDetails) {
+        setSubmissionStatus('Analyzing CV with AI...');
+        const cvDataUri = await fileToDataUri(cvFile);
+        const aiInput: AnalyzeCvInput = {
+          cvDataUri,
+          jobTitle: fullJobDetails.title,
+          jobDescription: fullJobDetails.description,
+          jobTechnologies: fullJobDetails.technologies,
+          jobExperienceLevel: fullJobDetails.experienceLevel,
+        };
+        const aiResult = await analyzeCvAgainstJob(aiInput);
+
+        // 5. Update application with AI insights
+        if (aiResult && applicationDocId) {
+             setSubmissionStatus('Saving AI insights...');
+             await updateDoc(doc(db, 'applications', applicationDocId), {
+                aiScore: aiResult.score,
+                aiAnalysisSummary: aiResult.summary,
+                aiStrengths: aiResult.strengths || [],
+                aiWeaknesses: aiResult.weaknesses || [],
+            });
+             toast({ title: 'AI Analysis Complete!', description: 'CV insights saved with your application.' });
+        } else if (applicationDocId) {
+            toast({ variant: 'default', title: 'AI Analysis Skipped', description: 'Could not get AI insights, but application submitted.' });
+        }
+      } else {
+         toast({ variant: 'default', title: 'AI Analysis Skipped', description: 'Full job details not found. Application submitted without AI insights.' });
+      }
+
 
       toast({ title: 'Application Submitted!', description: `You've successfully applied for ${job.title}.` });
-      onApplicationSubmitted(); // Trigger refresh or state update in parent
-      onOpenChange(false); // Close dialog
-      setCvFile(null); // Reset file
+      onApplicationSubmitted();
+      onOpenChange(false);
+      setCvFile(null);
       const fileInput = document.getElementById('cv-upload') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
 
 
-    } catch (error: any) {
+    } catch (error: any)
+     {
       console.error('Application submission error:', error);
       setUploadError(error.message || 'An unexpected error occurred.');
       toast({ variant: 'destructive', title: 'Application Failed', description: error.message || 'Could not submit application.' });
+      // If AI step failed but initial app was saved, don't delete it. Recruiter can still see it.
     } finally {
       setIsSubmitting(false);
+      setSubmissionStatus('');
     }
   };
 
   if (!job) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(isOpen) => {
+        if (!isSubmitting) { // Prevent closing if submitting
+            onOpenChange(isOpen);
+            if (!isOpen) { // Reset state if dialog is closed manually
+                setCvFile(null);
+                setUploadError(null);
+                setSubmissionStatus('');
+            }
+        }
+    }}>
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
           <DialogTitle className="font-headline text-2xl text-primary">Apply for: {job.title}</DialogTitle>
           <DialogDescription>
-            Upload your CV to apply for this position. Supported formats: PDF, DOC, DOCX (Max 5MB).
+            Upload your CV to apply. Supported: PDF, DOC, DOCX (Max 5MB). AI will analyze your CV.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6 py-4">
           <div className="space-y-2">
             <Label htmlFor="cv-upload" className="text-base">Upload CV</Label>
             <div className="flex items-center justify-center w-full">
-                <label 
-                    htmlFor="cv-upload" 
+                <label
+                    htmlFor="cv-upload"
                     className="flex flex-col items-center justify-center w-full h-40 border-2 border-border border-dashed rounded-lg cursor-pointer bg-muted/30 hover:bg-muted/50 transition-colors"
                 >
                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
@@ -154,26 +230,33 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
                         </p>
                         <p className="text-xs text-muted-foreground">PDF, DOC, DOCX (MAX. 5MB)</p>
                     </div>
-                    <Input 
-                        id="cv-upload" 
-                        type="file" 
-                        className="hidden" 
-                        onChange={handleFileChange} 
+                    <Input
+                        id="cv-upload"
+                        type="file"
+                        className="hidden"
+                        onChange={handleFileChange}
                         accept=".pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        disabled={isSubmitting}
                     />
                 </label>
             </div>
-            {cvFile && <p className="text-sm text-green-600 mt-2">Selected: {cvFile.name}</p>}
+            {cvFile && !isSubmitting && <p className="text-sm text-green-600 mt-2">Selected: {cvFile.name}</p>}
             {uploadError && <p className="text-sm text-destructive mt-2">{uploadError}</p>}
+            {isSubmitting && submissionStatus && (
+              <div className="flex items-center text-sm text-primary mt-2">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <span>{submissionStatus}</span>
+              </div>
+            )}
           </div>
           <DialogFooter className="pt-4">
             <DialogClose asChild>
-                <Button variant="outline" type="button" onClick={() => { setCvFile(null); setUploadError(null);}}>Cancel</Button>
+                <Button variant="outline" type="button" disabled={isSubmitting} onClick={() => { setCvFile(null); setUploadError(null);}}>Cancel</Button>
             </DialogClose>
             <Button type="submit" disabled={isSubmitting || !cvFile || !!uploadError} className="bg-accent hover:bg-accent/90 text-accent-foreground">
               {isSubmitting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
                 </>
               ) : (
                 'Submit Application'
