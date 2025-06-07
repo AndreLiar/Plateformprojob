@@ -2,14 +2,14 @@
 // src/app/api/upload-cv/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import { uploadStreamToCloudinary } from '@/lib/cloudinary';
-import pdf from 'pdf-parse';
-import mammoth from 'mammoth';
+// pdf-parse and mammoth are removed as text extraction is temporarily disabled
 
 export async function POST(request: NextRequest) {
-  let extractedText: string | null = null;
-  let extractionError: string | null = null;
   let cvUrl: string | null = null;
   let cvPublicId: string | null = null;
+  // Text extraction is deferred, so these will be null or default messages
+  const extractedText: string | null = null; 
+  const extractionError: string | null = "Text extraction feature is temporarily unavailable.";
 
   try {
     const formData = await request.formData();
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     if (!file) {
       return NextResponse.json({ 
         success: false, error: 'No file provided.', 
-        extractedText: null, extractionError: 'No file provided for extraction.', 
+        extractedText: null, extractionError: 'No file provided for processing.', 
         url: null, publicId: null 
       }, { status: 400 });
     }
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     if (file.size > 5 * 1024 * 1024) { // 5MB limit
       return NextResponse.json({ 
         success: false, error: 'File is too large. Max 5MB.', 
-        extractedText: null, extractionError: 'File too large for extraction.', 
+        extractedText: null, extractionError: 'File too large.', 
         url: null, publicId: null 
       }, { status: 400 });
     }
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json({ 
         success: false, error: 'Invalid file type. Only PDF, DOC, DOCX allowed.', 
-        extractedText: null, extractionError: 'Invalid file type for extraction.', 
+        extractedText: null, extractionError: 'Invalid file type.', 
         url: null, publicId: null 
       }, { status: 400 });
     }
@@ -46,38 +46,10 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    extractedText = null; 
-    extractionError = null;
+    // --- Text Extraction Logic Removed Temporarily ---
+    // The extractedText and extractionError variables are initialized above.
 
-    if (file.type === 'application/pdf') {
-      try {
-        const data = await pdf(buffer);
-        extractedText = data.text;
-      } catch (err: any) {
-        console.warn('PDF parsing error in /api/upload-cv:', err.message);
-        extractionError = `Failed to extract text from PDF: ${err.message || 'Unknown PDF parsing error'}. AI analysis might be impacted.`;
-      }
-    } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') { // DOCX
-      try {
-        const { value } = await mammoth.extractRawText({ buffer });
-        extractedText = value;
-      } catch (err: any) {
-        console.warn('DOCX parsing error in /api/upload-cv:', err.message);
-        extractionError = `Failed to extract text from DOCX: ${err.message || 'Unknown DOCX parsing error'}. AI analysis might be impacted.`;
-      }
-    } else if (file.type === 'application/msword') { // DOC
-      try {
-        const { value } = await mammoth.extractRawText({ buffer }); // Attempt for .doc
-        extractedText = value;
-        if (!extractedText || extractedText.trim() === "") {
-          extractionError = 'Text extraction from .doc file yielded no content or failed. The .doc format has limited support. Consider converting to DOCX or PDF for better results. AI analysis might be impacted.';
-        }
-      } catch (docErr: any) {
-        console.warn('Mammoth .doc parsing error in /api/upload-cv:', docErr.message);
-        extractionError = `Failed to extract text from .doc file: ${docErr.message || 'Unknown .doc parsing error'}. This format has limited support. Consider converting to DOCX or PDF. AI analysis might be impacted.`;
-      }
-    }
-
+    // --- Cloudinary Upload ---
     const originalFilename = file.name.split('.').slice(0, -1).join('.') || `cv_${Date.now()}`;
     const cloudinaryResult = await uploadStreamToCloudinary(buffer, {
       folder: 'cv_uploads',
@@ -93,17 +65,16 @@ export async function POST(request: NextRequest) {
         url: cvUrl,
         publicId: cvPublicId,
         extractedText: extractedText, 
-        extractionError: extractionError, 
+        extractionError: extractionError, // Will indicate feature is unavailable
       });
     } else {
       const cloudinaryErrorMessage = (cloudinaryResult as any)?.error?.message || 'Cloudinary upload failed.';
       console.error('Cloudinary upload error in API route /api/upload-cv:', cloudinaryResult);
-      const combinedErrorForClient = `Cloudinary upload failed: ${cloudinaryErrorMessage}. ${extractionError ? `Text extraction issue: ${extractionError}` : ''}`.trim();
       return NextResponse.json({
         success: false,
-        error: combinedErrorForClient,
+        error: `Cloudinary upload failed: ${cloudinaryErrorMessage}.`,
         extractedText, 
-        extractionError,
+        extractionError, // Will indicate feature is unavailable
         url: null,
         publicId: null,
       }, { status: 500 });
@@ -116,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     if (error instanceof Error) {
       messageForDev = error.message;
-      clientMessage = "Failed to process CV: " + error.message.substring(0, 100); // Keep client message somewhat generic
+      clientMessage = "Failed to process CV: " + error.message.substring(0, 100); 
       console.error("Error Name:", error.name);
       console.error("Error Message:", error.message);
       console.error("Error Stack:", error.stack);
@@ -131,20 +102,14 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // Ensure extractedText and extractionError are passed if they were determined before this critical error
-    const finalExtractedText = typeof extractedText === 'string' || extractedText === null ? extractedText : null;
-    const finalExtractionError = typeof extractionError === 'string' || extractionError === null ? extractionError : 'Error during text extraction stage, details unavailable.';
-
     return NextResponse.json(
       { 
         success: false, 
-        error: clientMessage, // User-facing, possibly generic error
-        // Include these for potential debugging on client or if some part of the process succeeded before the fatal error
-        extractedText: finalExtractedText,
-        extractionError: finalExtractionError,
-        url: cvUrl, // cvUrl and cvPublicId might be null if Cloudinary upload didn't happen or failed
+        error: clientMessage,
+        extractedText: null, // Ensure null if critical error
+        extractionError: "CV processing encountered a critical server error.", // Specific error for this case
+        url: cvUrl, 
         publicId: cvPublicId,
-        // Add a developer-specific message for more detailed insight if needed on client debug
         _dev_error_details: messageForDev 
       }, 
       { status: 500 }
