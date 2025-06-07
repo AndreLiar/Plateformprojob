@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, UploadCloud, Brain } from 'lucide-react';
+import { Loader2, UploadCloud } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { analyzeCvAgainstJob, type AnalyzeCvInput } from '@/ai/flows/analyze-cv-flow';
@@ -57,14 +57,14 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
       if (file.size > 5 * 1024 * 1024) { // 5MB limit
         setUploadError('File is too large. Max 5MB.');
         setCvFile(null);
-        event.target.value = ''; // Reset file input
+        event.target.value = ''; 
         return;
       }
       const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
       if (!allowedTypes.includes(file.type)) {
         setUploadError('Invalid file type. Only PDF, DOC, or DOCX are allowed.');
         setCvFile(null);
-        event.target.value = ''; // Reset file input
+        event.target.value = ''; 
         return;
       }
       setCvFile(file);
@@ -89,10 +89,12 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
     setIsSubmitting(true);
     setUploadError(null);
     let applicationDocId: string | null = null;
+    let extractedTextForAI: string | null = null;
+    let extractionErrorFromAPI: string | null = null;
 
     try {
-      // 1. Upload CV to Cloudinary via our API route
-      setSubmissionStatus('Uploading CV...');
+      // 1. Upload CV to Cloudinary & attempt text extraction via our API route
+      setSubmissionStatus('Uploading CV & extracting text...');
       const formData = new FormData();
       formData.append('cv', cvFile);
 
@@ -103,7 +105,7 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
 
       if (!uploadResponse.ok) {
         const errorData = await uploadResponse.json();
-        throw new Error(errorData.error || 'CV upload failed.');
+        throw new Error(errorData.error || 'CV upload and text extraction failed.');
       }
 
       const uploadResult = await uploadResponse.json();
@@ -112,6 +114,13 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
       }
       const cvUrl = uploadResult.url;
       const cloudinaryPublicId = uploadResult.publicId;
+      extractedTextForAI = uploadResult.extractedText; // Get extracted text
+      extractionErrorFromAPI = uploadResult.extractionError; // Get extraction error message
+
+      if (extractionErrorFromAPI) {
+        toast({ variant: "default", title: "CV Text Extraction Note", description: extractionErrorFromAPI, duration: 7000 });
+      }
+
 
       // 2. Save initial application to Firestore
       setSubmissionStatus('Saving application...');
@@ -127,13 +136,20 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         cloudinaryPublicId: cloudinaryPublicId,
         appliedAt: serverTimestamp(),
         status: 'Applied',
+        // Initial AI fields if text extraction already indicated issues
+        ...(extractionErrorFromAPI && {
+            aiScore: 0,
+            aiAnalysisSummary: extractionErrorFromAPI,
+            aiStrengths: [],
+            aiWeaknesses: ["Text extraction failed or CV content not suitable for AI analysis."],
+        })
       });
       applicationDocId = appDocRef.id;
 
       // 3. Fetch full job details for AI analysis
       setSubmissionStatus('Preparing for AI analysis...');
       let fullJobDetails: Job | null = null;
-      if (job.id) { // Ensure job.id is defined
+      if (job.id) { 
         const jobDocRef = doc(db, 'jobs', job.id);
         const jobDocSnap = await getDoc(jobDocRef);
         if (jobDocSnap.exists()) {
@@ -143,13 +159,14 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         }
       }
 
-
-      // 4. Convert CV to Data URI and call AI Flow (if job details are available)
-      if (fullJobDetails) {
+      // 4. Convert CV to Data URI for fallback, and call AI Flow
+      if (fullJobDetails && !extractionErrorFromAPI) { // Only proceed with AI if text extraction seemed okay
         setSubmissionStatus('Analyzing CV with AI...');
-        const cvDataUri = await fileToDataUri(cvFile);
+        const cvDataUri = await fileToDataUri(cvFile); // Still generate data URI for fallback/other types
+        
         const aiInput: AnalyzeCvInput = {
           cvDataUri,
+          cvTextContent: extractedTextForAI || undefined, // Pass extracted text if available
           jobTitle: fullJobDetails.title,
           jobDescription: fullJobDetails.description,
           jobTechnologies: fullJobDetails.technologies,
@@ -168,9 +185,28 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
             });
              toast({ title: 'AI Analysis Complete!', description: 'CV insights saved with your application.' });
         } else if (applicationDocId) {
-            toast({ variant: 'default', title: 'AI Analysis Skipped', description: 'Could not get AI insights, but application submitted.' });
+            // This case might be covered if aiResult comes back with an error message already
+            const summaryMessage = aiResult?.summary || "AI analysis did not return specific insights, but application was submitted.";
+            await updateDoc(doc(db, 'applications', applicationDocId), {
+                aiScore: 0, // Default score if AI result is problematic
+                aiAnalysisSummary: summaryMessage,
+            });
+            toast({ variant: 'default', title: 'AI Analysis Note', description: summaryMessage });
         }
-      } else {
+      } else if (fullJobDetails && extractionErrorFromAPI && applicationDocId) {
+         // AI analysis was skipped due to earlier text extraction error, ensure Firestore reflects this if not already set
+         await updateDoc(doc(db, 'applications', applicationDocId), {
+            aiScore: 0,
+            aiAnalysisSummary: extractionErrorFromAPI, // Use the error from extraction
+            aiStrengths: [],
+            aiWeaknesses: ["Text extraction failed, AI analysis skipped."],
+        });
+         toast({ variant: 'default', title: 'AI Analysis Skipped', description: 'Text extraction from CV failed. Application submitted without AI insights.' });
+      } else if (!fullJobDetails && applicationDocId) {
+         await updateDoc(doc(db, 'applications', applicationDocId), {
+            aiScore: 0,
+            aiAnalysisSummary: 'Full job details not found, AI analysis skipped.',
+         });
          toast({ variant: 'default', title: 'AI Analysis Skipped', description: 'Full job details not found. Application submitted without AI insights.' });
       }
 
@@ -188,7 +224,17 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
       console.error('Application submission error:', error);
       setUploadError(error.message || 'An unexpected error occurred.');
       toast({ variant: 'destructive', title: 'Application Failed', description: error.message || 'Could not submit application.' });
-      // If AI step failed but initial app was saved, don't delete it. Recruiter can still see it.
+      if (applicationDocId) { // If app doc created but subsequent steps failed, mark as error
+        try {
+          await updateDoc(doc(db, 'applications', applicationDocId), {
+            status: 'Error', // Or some other indicator
+            aiAnalysisSummary: `Application submission failed after initial save: ${error.message}`,
+            aiScore: 0,
+          });
+        } catch (updateError) {
+          console.error("Failed to update application with error status:", updateError);
+        }
+      }
     } finally {
       setIsSubmitting(false);
       setSubmissionStatus('');
@@ -199,9 +245,9 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => {
-        if (!isSubmitting) { // Prevent closing if submitting
+        if (!isSubmitting) { 
             onOpenChange(isOpen);
-            if (!isOpen) { // Reset state if dialog is closed manually
+            if (!isOpen) { 
                 setCvFile(null);
                 setUploadError(null);
                 setSubmissionStatus('');
@@ -212,7 +258,7 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         <DialogHeader>
           <DialogTitle className="font-headline text-2xl text-primary">Apply for: {job.title}</DialogTitle>
           <DialogDescription>
-            Upload your CV to apply. Supported: PDF, DOC, DOCX (Max 5MB). AI will analyze your CV.
+            Upload your CV to apply. Supported: PDF, DOC, DOCX (Max 5MB). AI will attempt to analyze your CV content.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6 py-4">

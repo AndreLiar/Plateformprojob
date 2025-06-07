@@ -15,8 +15,9 @@ const AnalyzeCvInputSchema = z.object({
   cvDataUri: z
     .string()
     .describe(
-      "The candidate's CV content as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
+      "The candidate's CV file as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'. This is primarily for non-textual analysis or fallback."
     ),
+  cvTextContent: z.string().optional().describe("The extracted text content of the candidate's CV. This should be prioritized for analysis if available."),
   jobTitle: z.string().describe("The title of the job the candidate applied for."),
   jobDescription: z.string().describe("The full text of the job description."),
   jobTechnologies: z.string().describe("Comma-separated list of key technologies/skills required for the job."),
@@ -47,10 +48,16 @@ const cvAnalysisPrompt = ai.definePrompt({
     - Full Job Description:
     {{{jobDescription}}}
 
-    Candidate's CV (provided as media data):
+    Candidate's CV:
+    {{#if cvTextContent}}
+    CV Text Content (Prioritize this for analysis):
+    {{{cvTextContent}}}
+    {{else}}
+    CV File (Analyze content if possible, typically for image-based CVs or as a fallback if text extraction failed. Direct text analysis from data URIs for PDF/DOCX is limited.):
     {{media url=cvDataUri}}
+    {{/if}}
 
-    Based on the CV content and the job details, please provide the following:
+    Based on the CV content (prioritizing text content if available) and the job details, please provide the following:
     1.  **Relevance Score**: An integer score from 0 to 100, where 100 is a perfect match. Consider all aspects: experience, skills, technologies, and overall fit for the "{{{jobTitle}}}" role at the "{{{jobExperienceLevel}}}" level.
     2.  **Summary**: A brief (2-3 sentences) explanation of why the candidate is or isn't a good fit, justifying the score.
     3.  **Strengths**: A list of 3-5 bullet points highlighting the candidate's key strengths relevant to THIS job. Focus on skills, experiences, and technologies mentioned in the job description.
@@ -96,15 +103,18 @@ export async function analyzeCvAgainstJob(input: AnalyzeCvInput): Promise<Analyz
   } catch (error: any) {
     console.error("Error in analyzeCvAgainstJob flow:", error);
     let summaryMessage = `Error during AI analysis: ${error.message || "Unknown error"}`;
-    // Check if the error message indicates an unsupported MIME type for the media helper
+    
     if (error.message && (error.message.includes("mimeType") && error.message.includes("not supported"))) {
-        summaryMessage = `AI analysis failed: The uploaded CV file type (e.g., DOCX, PDF) is not directly supported for content analysis by the current AI model configuration. The application has been submitted without AI insights. Original error: ${error.message}`;
+        summaryMessage = `AI analysis fallback error: The CV file type (e.g., DOCX, PDF) is not directly supported for content analysis via its data URI by the current AI model configuration. Attempted text extraction may have failed. Application submitted without full AI insights. Original error: ${error.message}`;
+    } else if (input.cvTextContent === null || input.cvTextContent === undefined || input.cvTextContent.trim() === "") {
+        summaryMessage = `AI analysis might be incomplete: Text content could not be fully extracted from the CV, or was empty. AI analysis quality may be reduced. Application submitted. Original error (if any): ${error.message || "No specific error"}`;
     }
+
     return {
       score: 0,
       summary: summaryMessage,
       strengths: [],
-      weaknesses: ["AI analysis could not be completed due to an error."],
+      weaknesses: ["AI analysis could not be completed due to an error or lack of extractable text."],
     };
   }
 }

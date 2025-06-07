@@ -2,37 +2,10 @@
 // src/app/api/upload-cv/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import { uploadStreamToCloudinary } from '@/lib/cloudinary';
-import { auth } from '@/lib/firebase'; // Assuming you have auth initialized in firebase.ts
-import { onAuthStateChanged } from 'firebase/auth'; // To verify user
-
-// Helper to get current user (simplified for API route)
-const getCurrentUser = (): Promise<import('firebase/auth').User | null> => {
-  return new Promise((resolve, reject) => {
-    if (!auth) {
-      return reject(new Error("Firebase auth not initialized"));
-    }
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      unsubscribe();
-      resolve(user);
-    }, (error) => {
-      unsubscribe();
-      reject(error);
-    });
-  });
-};
-
+import pdf from 'pdf-parse';
+import mammoth from 'mammoth';
 
 export async function POST(request: NextRequest) {
-  // This is a basic auth check. In a real app, you'd verify the user's session token
-  // passed in headers, rather than relying on onAuthStateChanged in an API route.
-  // For Firebase Studio, this might work for simple cases, but proper token validation is better.
-  // For now, we'll proceed with a simplified check. It's better to use a middleware or token validation.
-
-  // A more robust way would be to get the Firebase ID token from the client request's Authorization header
-  // and verify it using Firebase Admin SDK on the backend.
-  // This example simplifies by assuming the client is authenticated if this route is hit.
-  // This is NOT production-ready auth for an API route.
-
   const formData = await request.formData();
   const file = formData.get('cv') as File | null;
 
@@ -44,27 +17,65 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'File is too large. Max 5MB.' }, { status: 400 });
   }
 
-  const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+  const allowedTypes = [
+    'application/pdf', 
+    'application/msword', 
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ];
   if (!allowedTypes.includes(file.type)) {
     return NextResponse.json({ success: false, error: 'Invalid file type. Only PDF, DOC, DOCX allowed.' }, { status: 400 });
   }
+
+  let extractedText: string | null = null;
+  let extractionError: string | null = null;
 
   try {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Extract original filename for Cloudinary to use
-    const originalFilename = file.name.split('.').slice(0, -1).join('.');
+    // Attempt text extraction based on MIME type
+    if (file.type === 'application/pdf') {
+      try {
+        const data = await pdf(buffer);
+        extractedText = data.text;
+      } catch (err: any) {
+        console.warn('PDF parsing error:', err.message);
+        extractionError = `Failed to extract text from PDF: ${err.message}. AI analysis might be based on image content if applicable.`;
+      }
+    } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      try {
+        const { value } = await mammoth.extractRawText({ buffer });
+        extractedText = value;
+      } catch (err: any) {
+        console.warn('DOCX parsing error:', err.message);
+        extractionError = `Failed to extract text from DOCX: ${err.message}. AI analysis might be based on image content if applicable.`;
+      }
+    } else if (file.type === 'application/msword') {
+        // Mammoth might handle some .doc files, but it's less reliable.
+        try {
+            const { value } = await mammoth.extractRawText({ buffer }); // Attempt for .doc
+            extractedText = value;
+        } catch (err: any) {
+            console.warn('DOC parsing error (attempted with mammoth):', err.message);
+            extractionError = `Failed to extract text from DOC: ${err.message}. Support for .doc is limited. Consider converting to DOCX or PDF. AI analysis might be based on image content if applicable.`;
+        }
+    }
 
+    const originalFilename = file.name.split('.').slice(0, -1).join('.');
     const result = await uploadStreamToCloudinary(buffer, {
-      folder: 'cv_uploads', // Optional: organize uploads in Cloudinary
-      public_id: `${originalFilename}_${Date.now()}`, // Creates a unique public_id
-      // type: 'upload', // not needed for raw
-      // access_mode: 'public', // default is public
+      folder: 'cv_uploads',
+      public_id: `${originalFilename}_${Date.now()}`,
+      resource_type: 'raw', // Keep as raw for storage
     });
 
     if (result && 'secure_url' in result) {
-      return NextResponse.json({ success: true, url: result.secure_url, publicId: result.public_id });
+      return NextResponse.json({ 
+        success: true, 
+        url: result.secure_url, 
+        publicId: result.public_id,
+        extractedText: extractedText, // Include extracted text
+        extractionError: extractionError, // Include any extraction error
+      });
     } else {
       console.error('Cloudinary upload error in API route:', result);
       const errorMessage = (result as any)?.error?.message || 'Cloudinary upload failed.';
