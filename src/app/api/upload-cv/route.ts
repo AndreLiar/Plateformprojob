@@ -55,10 +55,10 @@ export async function POST(request: NextRequest) {
       try {
         // Mammoth's .doc support is limited.
         const { value } = await mammoth.extractRawText({ buffer });
-        extractedText = value; // value can be null if extraction fails
+        extractedText = value; 
         if (extractedText === null || extractedText.trim() === "") {
           extractionError = 'Text extraction from .doc file yielded no content or failed. The .doc format has limited support. Consider converting to DOCX or PDF for better results. AI analysis might be impacted.';
-          extractedText = null; // Ensure it's explicitly null
+          extractedText = null; 
         }
       } catch (docErr: any) {
         console.warn('Mammoth .doc parsing error in /api/upload-cv:', docErr.message);
@@ -81,43 +81,57 @@ export async function POST(request: NextRequest) {
         url: cloudinaryResult.secure_url,
         publicId: cloudinaryResult.public_id,
         extractedText: extractedText,
-        extractionError: extractionError,
+        extractionError: extractionError, // This will be null if extraction succeeded
       });
     } else {
       // Cloudinary upload itself failed
       console.error('Cloudinary upload error in API route /api/upload-cv:', cloudinaryResult);
       const errorMessage = (cloudinaryResult as any)?.error?.message || 'Cloudinary upload failed.';
       // Ensure extractionError from earlier stage is preserved if Cloudinary upload itself fails
-      return NextResponse.json({ success: false, error: `Upload to Cloudinary failed: ${errorMessage}`, extractedText, extractionError: extractionError || `Cloudinary error, extraction status: ${extractionError ? 'failed' : 'not attempted or succeeded'}` }, { status: 500 });
+      return NextResponse.json({ 
+        success: false, 
+        error: `Upload to Cloudinary failed: ${errorMessage}`, 
+        extractedText, // Send back any text that might have been extracted before Cloudinary failure
+        extractionError: extractionError || `Cloudinary error occurred. Text extraction status: ${extractionError ? 'failed' : (extractedText ? 'succeeded' : 'not applicable or failed prior')}` 
+      }, { status: 500 });
     }
 
-  } catch (error: any) {
-    // This is the final catch-all for any unhandled errors during the process
-    console.error('!!! Critical unhandled error in /api/upload-cv route:', error);
-    let safeErrorMessage = 'An unexpected server error occurred while processing the CV.';
-    
-    // Attempt to get a more specific message from the error object
+  } catch (error: unknown) { 
+    console.error('!!! Critical unhandled error in /api/upload-cv route (main catch block):', error);
+
+    let clientErrorMessage = 'An unexpected server error occurred while processing the CV.';
+    let detailedServerErrorInfo = 'Error object could not be fully processed.';
+
     if (error instanceof Error) {
-        safeErrorMessage = error.message;
+        clientErrorMessage = error.message;
+        detailedServerErrorInfo = `Error: ${error.message}${error.stack ? `\nStack: ${error.stack}` : ''}`;
     } else if (typeof error === 'string') {
-        safeErrorMessage = error;
+        clientErrorMessage = error;
+        detailedServerErrorInfo = `String error: ${error}`;
     } else {
-        // If the error is not a standard Error object or string, log its structure for debugging
         try {
-            console.error('!!! Non-standard error object structure:', JSON.stringify(error));
-        } catch (stringifyError) {
-            console.error('!!! Could not stringify non-standard error object.');
+            const errorString = JSON.stringify(error, Object.getOwnPropertyNames(Object.getPrototypeOf(error) || error));
+            clientErrorMessage = `A non-standard error occurred. Partial details: ${errorString.substring(0, 200)}`; 
+            detailedServerErrorInfo = `Non-standard error (stringified): ${errorString}`;
+        } catch (stringifyError: any) {
+            clientErrorMessage = 'A non-standard, unstringifiable error occurred.';
+            detailedServerErrorInfo = `Failed to stringify error object: ${stringifyError.message}`;
         }
     }
     
-    // Log the message that will be sent to the client
-    console.error('!!! Responding with JSON error in /api/upload-cv:', safeErrorMessage);
+    console.error('!!! Detailed server error info for /api/upload-cv:', detailedServerErrorInfo);
+    console.error('!!! Client-facing error message for /api/upload-cv:', clientErrorMessage);
+
+    const finalExtractedText = typeof extractedText === 'string' || extractedText === null ? extractedText : null;
+    const finalExtractionError = (typeof extractionError === 'string' || extractionError === null) 
+                                 ? extractionError 
+                                 : clientErrorMessage; 
 
     return NextResponse.json({
       success: false,
-      error: safeErrorMessage,
-      extractedText: extractedText, 
-      extractionError: extractionError || (error instanceof Error ? error.message : "Details in server logs"),
+      error: clientErrorMessage, 
+      extractedText: finalExtractedText,
+      extractionError: finalExtractionError,
     }, { status: 500 });
   }
 }
