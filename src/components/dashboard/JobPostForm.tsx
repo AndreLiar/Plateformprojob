@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, Info, ShoppingCart, AlertTriangle, ChevronsUpDown, ListChecks, Sparkles } from "lucide-react"; // Added Sparkles
+import { Loader2, Info, ShoppingCart, AlertTriangle, ChevronsUpDown, ListChecks, Sparkles, Check } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
@@ -38,7 +38,10 @@ import getStripe from "@/lib/getStripe";
 import jobTitlesData from '@/lib/job-titles.json';
 import platformTechnologiesData from '@/lib/platform-technologies.json';
 import platformModulesData from '@/lib/platforms-modules.json';
+import locationsListFromJson from '@/lib/locations-fr.json';
+import Fuse from 'fuse.js';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
@@ -57,13 +60,13 @@ const jobSchema = z.object({
   location: z.string().min(2, "Location is required.").max(100),
   contractType: z.enum(["Full-time", "Part-time", "Contract"]),
   experienceLevel: z.enum(["Entry", "Mid", "Senior"]),
-  // AI Specific fields - not part of the job document saved to DB, only for generation
   keyResponsibilitiesSummary: z.string().optional(),
   companyCultureSnippet: z.string().optional(),
 });
 
 const contractTypes: ContractType[] = ["Full-time", "Part-time", "Contract"];
 const experienceLevels: ExperienceLevel[] = ["Entry", "Mid", "Senior"];
+const alwaysShownLocations = ["Remote", "Hybrid (Remote + On-site)"];
 
 export default function JobPostForm() {
   const { toast } = useToast();
@@ -107,6 +110,45 @@ export default function JobPostForm() {
     const initialModulesString = form.getValues('modules');
     return initialModulesString ? initialModulesString.split(',').map(m => m.trim()).filter(m => m) : [];
   });
+
+  // For Location Combobox
+  const [allLocationsList, setAllLocationsList] = useState<string[]>([]);
+  const [locationSearch, setLocationSearch] = useState('');
+  const [filteredLocations, setFilteredLocations] = useState<string[]>([]);
+  const [isLocationPopoverOpen, setIsLocationPopoverOpen] = useState(false);
+  const [locationFuse, setLocationFuse] = useState<Fuse<string> | null>(null);
+
+  useEffect(() => {
+    // Initialize locations data and Fuse instance
+    const uniqueInitialLocations = Array.from(new Set([...alwaysShownLocations, ...locationsListFromJson]));
+    setAllLocationsList(uniqueInitialLocations);
+    setFilteredLocations(uniqueInitialLocations);
+
+    const searchableOnlyLocations = locationsListFromJson.filter(loc => !alwaysShownLocations.includes(loc));
+    setLocationFuse(new Fuse(searchableOnlyLocations, {
+        threshold: 0.3, // Adjust for fuzziness (0 perfect match, 1 any match)
+    }));
+  }, []);
+
+  useEffect(() => {
+    // Filter locations for combobox based on search query
+    if (!locationSearch.trim()) {
+        setFilteredLocations(allLocationsList); // Show all if no search
+        return;
+    }
+
+    let fuseResults: string[] = [];
+    if (locationFuse) {
+        fuseResults = locationFuse.search(locationSearch.trim()).map(item => item.item);
+    }
+
+    const matchingAlwaysShown = alwaysShownLocations.filter(loc =>
+        loc.toLowerCase().includes(locationSearch.trim().toLowerCase())
+    );
+    
+    const combined = Array.from(new Set([...matchingAlwaysShown, ...fuseResults]));
+    setFilteredLocations(combined);
+  }, [locationSearch, locationFuse, allLocationsList]);
 
 
   useEffect(() => {
@@ -237,6 +279,7 @@ export default function JobPostForm() {
       setSelectedPlatform('');
       setMultiSelectSelectedTech([]);
       setMultiSelectSelectedModules([]); 
+      setLocationSearch('');
       router.push('/dashboard/my-jobs'); 
     } catch (error: any) {
       toast({
@@ -373,14 +416,12 @@ export default function JobPostForm() {
     }
     if (!platform || !title || !technologies || !experienceLevel || !location) {
         toast({ variant: "destructive", title: "Input Missing", description: "Platform, Title, Technologies, Experience Level, and Location are needed to generate a good AI description."});
-        // Do not return here, let the AI try its best with what it has, keyResponsibilities is most crucial for the prompt.
     }
-
 
     setIsGeneratingAIDescription(true);
     try {
         const aiInput: GenerateJobDescriptionInput = {
-            platform: platform || "General Platform", // Provide defaults if empty
+            platform: platform || "General Platform", 
             jobTitle: title || "General Role",
             technologies: technologies || "Relevant Technologies",
             modules: modules || "",
@@ -403,7 +444,6 @@ export default function JobPostForm() {
         setIsGeneratingAIDescription(false);
     }
   };
-
 
   if (authLoading && !userProfile && !searchParams.get('session_id')) { 
     return (
@@ -587,7 +627,6 @@ export default function JobPostForm() {
                 />
               </div>
 
-
               <div className="relative space-y-2">
                 <FormField
                     control={form.control}
@@ -615,7 +654,6 @@ export default function JobPostForm() {
                     Generate with AI
                 </Button>
               </div>
-
 
                <div className="grid md:grid-cols-2 gap-8">
                 <FormField
@@ -705,7 +743,7 @@ export default function JobPostForm() {
                     name="modules"
                     render={({ field }) => (
                         <FormItem className="flex flex-col">
-                        <FormLabel>Modules / Specializations</FormLabel>
+                        <FormLabel>Modules / Specializations (Optional)</FormLabel>
                         {!selectedPlatform ? (
                             <Input placeholder="Select a platform category first" disabled />
                         ) : availableModules.length > 0 ? (
@@ -786,11 +824,64 @@ export default function JobPostForm() {
                   control={form.control}
                   name="location"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="flex flex-col">
                       <FormLabel>Location</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., San Francisco, CA or Remote" {...field} />
-                      </FormControl>
+                      <Popover open={isLocationPopoverOpen} onOpenChange={setIsLocationPopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              disabled={allLocationsList.length === 0}
+                              className={cn(
+                                "w-full justify-between h-10",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {field.value
+                                ? field.value 
+                                : "Select location..."}
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                          <Command shouldFilter={false}> {/* Custom filtering with Fuse.js */}
+                            <CommandInput
+                              placeholder="Search location..."
+                              value={locationSearch}
+                              onValueChange={setLocationSearch}
+                            />
+                            <CommandEmpty>No location found.</CommandEmpty>
+                            <CommandGroup>
+                              <ScrollArea className="h-72">
+                                {filteredLocations.map((location) => (
+                                  <CommandItem
+                                    key={location}
+                                    value={location} 
+                                    onSelect={() => {
+                                      form.setValue("location", location, { shouldValidate: true });
+                                      setIsLocationPopoverOpen(false);
+                                      setLocationSearch(''); // Clear search input after selection
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        field.value === location ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                    {location}
+                                  </CommandItem>
+                                ))}
+                              </ScrollArea>
+                            </CommandGroup>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      <FormDescription>
+                        Select a location or type to search. "Remote" and "Hybrid" are prioritized.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -858,4 +949,3 @@ export default function JobPostForm() {
     </Card>
   );
 }
-
