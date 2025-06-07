@@ -1,0 +1,40 @@
+{
+  "Salesforce": [
+    "Sales Cloud",
+    "Service Cloud",
+    "Marketing Cloud",
+    "Experience Cloud",
+    "CPQ",
+    "Commerce Cloud",
+    "Platform (Dev)",
+    "Tableau",
+    "Pardot"
+  ],
+  "SAP": [
+    "FI/CO",
+    "MM",
+    "SD",
+    "HCM",
+    "ABAP",
+    "Fiori/UI5",
+    "S/4HANA",
+    "BW/BI",
+    "BTP"
+  ],
+  "Oracle": [
+    "EBS",
+    "HCM",
+    "SCM",
+    "Cloud ERP",
+    "APEX",
+    "BI",
+    "Fusion Apps"
+  ],
+  "HubSpot": [
+    "CRM",
+    "Marketing Hub",
+    "Service Hub",
+    "CMS Hub",
+    "Operations Hub"
+  ]
+}

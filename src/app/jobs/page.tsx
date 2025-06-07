@@ -8,13 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
-// Define a type for the job structure after serialization for Server Component context
 interface SerializedJob {
   id: string;
   title: string;
   description: string;
-  platform: string; // Platform category
-  technologies: string; // Specific technologies
+  platform: string; 
+  technologies: string; 
+  modules?: string; // Added modules
   location: string;
   contractType: ContractType;
   experienceLevel: ExperienceLevel;
@@ -33,14 +33,14 @@ async function getJobs(): Promise<SerializedJob[]> {
     const q = query(jobsCollection, orderBy('createdAt', 'desc'));
     const querySnapshot = await getDocs(q);
     const jobs: SerializedJob[] = querySnapshot.docs.map(doc => {
-      const data = doc.data() as Job; // Cast to original Job type to access fields
-      // Ensure Firestore Timestamps are correctly converted to ISO strings
+      const data = doc.data() as Job; 
       return {
         id: doc.id,
         title: data.title,
         description: data.description,
-        platform: data.platform, // Platform category
-        technologies: data.technologies, // Specific technologies
+        platform: data.platform, 
+        technologies: data.technologies, 
+        modules: data.modules || "", // Handle optional modules
         location: data.location,
         contractType: data.contractType,
         experienceLevel: data.experienceLevel,
@@ -95,7 +95,6 @@ export default async function BrowseJobsPage() {
       </h1>
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {jobs.map(job => (
-          // Pass the job as SerializedJob, JobListCard expects JobForCard which is compatible
           <JobListCard key={job.id} job={job} />
         ))}
       </div>

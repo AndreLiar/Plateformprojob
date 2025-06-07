@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, Info, ShoppingCart, AlertTriangle, ChevronsUpDown } from "lucide-react"; // Added ChevronsUpDown
+import { Loader2, Info, ShoppingCart, AlertTriangle, ChevronsUpDown, ListChecks } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
@@ -37,6 +37,7 @@ import { STRIPE_PUBLISHABLE_KEY, STRIPE_JOB_POST_PRICE_ID, clientSideStripePubli
 import getStripe from "@/lib/getStripe";
 import jobTitlesData from '@/lib/job-titles.json';
 import platformTechnologiesData from '@/lib/platform-technologies.json';
+import platformModulesData from '@/lib/platforms-modules.json'; // Import modules data
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -51,6 +52,7 @@ const jobSchema = z.object({
   title: z.string().min(1, "Job title is required.").max(100),
   description: z.string().min(20, "Description must be at least 20 characters.").max(5000),
   technologies: z.string().min(1, "Specific technologies are required (at least one).").max(200),
+  modules: z.string().optional(), // Added modules field
   location: z.string().min(2, "Location is required.").max(100),
   contractType: z.enum(["Full-time", "Part-time", "Contract"]),
   experienceLevel: z.enum(["Entry", "Mid", "Senior"]),
@@ -78,6 +80,7 @@ export default function JobPostForm() {
       title: "",
       description: "",
       technologies: "",
+      modules: "", // Default for modules
       location: "",
       contractType: "Full-time",
       experienceLevel: "Mid",
@@ -87,36 +90,47 @@ export default function JobPostForm() {
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformKey | ''>(() => form.getValues('platform') || '');
   const [availableJobTitles, setAvailableJobTitles] = useState<string[]>([]);
   const [suggestedTechnologies, setSuggestedTechnologies] = useState<string[]>([]);
+  const [availableModules, setAvailableModules] = useState<string[]>([]); // State for modules
+
   const [multiSelectSelectedTech, setMultiSelectSelectedTech] = useState<string[]>(() => {
     const initialTechString = form.getValues('technologies');
     return initialTechString ? initialTechString.split(',').map(t => t.trim()).filter(t => t) : [];
   });
+  const [multiSelectSelectedModules, setMultiSelectSelectedModules] = useState<string[]>(() => { // State for selected modules
+    const initialModulesString = form.getValues('modules');
+    return initialModulesString ? initialModulesString.split(',').map(m => m.trim()).filter(m => m) : [];
+  });
 
-  // Effect to populate job titles and suggested technologies based on selected platform (e.g. on initial load if platform is set)
+
   useEffect(() => {
     if (selectedPlatform && jobTitlesData[selectedPlatform]) {
       setAvailableJobTitles(jobTitlesData[selectedPlatform]);
       setSuggestedTechnologies(platformTechnologiesData[selectedPlatform as keyof typeof platformTechnologiesData] || []);
+      setAvailableModules(platformModulesData[selectedPlatform as keyof typeof platformModulesData] || []); // Populate modules
     } else {
       setAvailableJobTitles([]);
       setSuggestedTechnologies([]);
+      setAvailableModules([]); // Clear modules
     }
   }, [selectedPlatform]);
 
-  // Effect to sync multiSelectSelectedTech state with the form's 'technologies' value, esp. when suggestions are available
+
   useEffect(() => {
     const currentTechValue = form.watch('technologies');
     if (selectedPlatform && suggestedTechnologies.length > 0) {
-        // Only update checkbox state if popover is the likely source of truth
         const newSelected = currentTechValue ? currentTechValue.split(',').map(t => t.trim()).filter(t => t) : [];
-        // Avoid infinite loop by checking if arrays are different
         if (JSON.stringify(newSelected) !== JSON.stringify(multiSelectSelectedTech)) {
             setMultiSelectSelectedTech(newSelected);
         }
     }
-    // If suggestedTechnologies is empty (meaning text input is shown), multiSelectSelectedTech should ideally be cleared
-    // This is handled by the platform change logic.
-  }, [form.watch('technologies'), selectedPlatform, suggestedTechnologies, multiSelectSelectedTech]);
+    const currentModulesValue = form.watch('modules');
+    if (selectedPlatform && availableModules.length > 0) {
+      const newSelectedModules = currentModulesValue ? currentModulesValue.split(',').map(m => m.trim()).filter(m => m) : [];
+      if (JSON.stringify(newSelectedModules) !== JSON.stringify(multiSelectSelectedModules)) {
+        setMultiSelectSelectedModules(newSelectedModules);
+      }
+    }
+  }, [form.watch('technologies'), form.watch('modules'), selectedPlatform, suggestedTechnologies, availableModules, multiSelectSelectedTech, multiSelectSelectedModules]);
 
 
   useEffect(() => {
@@ -190,7 +204,8 @@ export default function JobPostForm() {
         title: values.title,
         description: values.description,
         platform: values.platform, 
-        technologies: values.technologies, 
+        technologies: values.technologies,
+        modules: values.modules || "", // Store modules, default to empty string if undefined
         location: values.location,
         contractType: values.contractType,
         experienceLevel: values.experienceLevel,
@@ -214,6 +229,7 @@ export default function JobPostForm() {
       form.reset();
       setSelectedPlatform('');
       setMultiSelectSelectedTech([]);
+      setMultiSelectSelectedModules([]); // Reset selected modules
       router.push('/dashboard/my-jobs'); 
     } catch (error: any) {
       toast({
@@ -277,17 +293,18 @@ export default function JobPostForm() {
       checkoutSessionId = sessionData.sessionId;
 
       if (!checkoutSessionId) {
-        console.error("Frontend Error: Received successful API response but no sessionId.", sessionData);
         const errorMsg = "Failed to get a valid session ID from the server. The Price ID used might be incorrect or for a different mode (e.g. subscription instead of one-time). Please check Stripe Price ID configuration or contact support.";
         toast({ variant: "destructive", title: "Checkout Error", description: errorMsg });
+        console.error("Frontend Error: Received successful API response but no sessionId.", sessionData);
         throw new Error('Frontend Error: Failed to retrieve a valid session ID from server response.');
       }
       
       const stripe = await getStripe();
       if (!stripe) {
-        console.error("Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.");
-        toast({ variant: "destructive", title: "Stripe Error", description: "Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set." });
-        throw new Error('Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.');
+        const errorMsg = "Stripe.js failed to load. Ensure NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.";
+        toast({ variant: "destructive", title: "Stripe Error", description: errorMsg });
+        console.error(errorMsg);
+        throw new Error(errorMsg);
       }
       
       const checkoutUrl = `https://checkout.stripe.com/c/pay/${checkoutSessionId}`;
@@ -296,7 +313,6 @@ export default function JobPostForm() {
       const { error: stripeJsError } = await stripe.redirectToCheckout({ sessionId: checkoutSessionId });
 
       if (stripeJsError) {
-        console.error("Stripe.js redirect error object:", stripeJsError);
          if (stripeJsError.message?.includes("Failed to set a named property 'href' on 'Location'") || 
             stripeJsError.message?.includes("navigation was blocked")) {
             throw stripeJsError; 
@@ -304,15 +320,15 @@ export default function JobPostForm() {
         throw new Error(stripeJsError.message || "Stripe.js reported an error during redirect setup.");
       }
     } catch (error: any) {
-      console.error("Purchase error or redirect exception:", error); 
       const checkoutUrl = checkoutSessionId ? `https://checkout.stripe.com/c/pay/${checkoutSessionId}` : '';
+      console.error("Purchase error or redirect exception:", { error, checkoutUrl }); 
 
       if (checkoutSessionId && error.message && (error.message.includes("Failed to set a named property 'href' on 'Location'") || error.message.includes("navigation was blocked"))) {
         console.warn(`Attempting to open Stripe Checkout in new tab due to navigation block: ${checkoutUrl}`);
         toast({
           variant: "warning",
           title: "Stripe Checkout: New Tab Action Required",
-          description: `Automatic redirect to Stripe was blocked (this is common in embedded windows). We will attempt to open Stripe Checkout in a new browser tab. Please check for it. If no new tab appeared, check your browser's pop-up blocker. URL (for manual copy): ${checkoutUrl}`,
+          description: `Automatic redirect to Stripe was blocked. We will attempt to open Stripe Checkout in a new browser tab. Please check for it. If no new tab appeared, check your browser's pop-up blocker. URL (for manual copy): ${checkoutUrl}`,
           duration: 30000, 
         });
         const newWindow = window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
@@ -424,11 +440,13 @@ export default function JobPostForm() {
                     <FormLabel>Platform Category</FormLabel>
                     <Select 
                       onValueChange={(value: PlatformKey) => {
-                        field.onChange(value); // Update RHF for platform
-                        setSelectedPlatform(value); // Update local state for platform
-                        form.setValue('title', ''); // Reset title field in RHF
-                        form.setValue('technologies', ''); // Reset technologies field in RHF
-                        setMultiSelectSelectedTech([]); // Reset local state for checkboxes
+                        field.onChange(value); 
+                        setSelectedPlatform(value); 
+                        form.setValue('title', ''); 
+                        form.setValue('technologies', ''); 
+                        setMultiSelectSelectedTech([]); 
+                        form.setValue('modules', ''); // Reset modules form field
+                        setMultiSelectSelectedModules([]); // Reset modules state
                       }} 
                       defaultValue={field.value}
                     >
@@ -507,7 +525,7 @@ export default function JobPostForm() {
                                 variant="outline"
                                 role="combobox"
                                 className={cn(
-                                  "w-full justify-between h-10", // Ensure consistent height
+                                  "w-full justify-between h-10",
                                   multiSelectSelectedTech.length === 0 && "text-muted-foreground"
                                 )}
                               >
@@ -558,7 +576,7 @@ export default function JobPostForm() {
                         <FormControl>
                           <Input 
                             placeholder="e.g., Kubernetes, AWS, Terraform" 
-                            {...field} // Bind react-hook-form field for manual input
+                            {...field} 
                           />
                         </FormControl>
                       )}
@@ -573,6 +591,88 @@ export default function JobPostForm() {
                     </FormItem>
                   )}
                 />
+                 <FormField
+                    control={form.control}
+                    name="modules"
+                    render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                        <FormLabel>Modules / Specializations</FormLabel>
+                        {!selectedPlatform ? (
+                            <Input placeholder="Select a platform category first" disabled />
+                        ) : availableModules.length > 0 ? (
+                            <Popover>
+                            <PopoverTrigger asChild>
+                                <FormControl>
+                                <Button
+                                    variant="outline"
+                                    role="combobox"
+                                    className={cn(
+                                    "w-full justify-between h-10",
+                                    multiSelectSelectedModules.length === 0 && "text-muted-foreground"
+                                    )}
+                                >
+                                    {multiSelectSelectedModules.length > 0
+                                    ? multiSelectSelectedModules.length === 1
+                                        ? multiSelectSelectedModules[0]
+                                        : `${multiSelectSelectedModules.length} modules selected`
+                                    : "Select modules..."}
+                                    <ListChecks className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                                </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                <ScrollArea className="h-72">
+                                <div className="p-4 space-y-2">
+                                    {availableModules.map((mod) => (
+                                    <FormItem 
+                                        key={mod} 
+                                        className="flex flex-row items-center space-x-3 space-y-0"
+                                    >
+                                        <FormControl>
+                                        <Checkbox
+                                            checked={multiSelectSelectedModules.includes(mod)}
+                                            onCheckedChange={(checked) => {
+                                            let newSelected: string[];
+                                            if (checked) {
+                                                newSelected = [...multiSelectSelectedModules, mod];
+                                            } else {
+                                                newSelected = multiSelectSelectedModules.filter(
+                                                (selectedMod) => selectedMod !== mod
+                                                );
+                                            }
+                                            setMultiSelectSelectedModules(newSelected);
+                                            form.setValue('modules', newSelected.join(', '), { shouldValidate: true });
+                                            }}
+                                        />
+                                        </FormControl>
+                                        <FormLabel className="font-normal text-sm">
+                                        {mod}
+                                        </FormLabel>
+                                    </FormItem>
+                                    ))}
+                                </div>
+                                </ScrollArea>
+                            </PopoverContent>
+                            </Popover>
+                        ) : (
+                             <FormControl>
+                                <Input 
+                                    placeholder="e.g., Finance, Supply Chain (if applicable)" 
+                                    {...field} 
+                                />
+                            </FormControl>
+                        )}
+                        <FormDescription>
+                            {selectedPlatform && availableModules.length > 0
+                            ? "Select relevant modules or specializations from the list."
+                            : selectedPlatform
+                                ? `No specific module suggestions for ${selectedPlatform}. List if applicable (comma-separated).`
+                                : "Platform-specific modules or areas of specialization (optional)."}
+                        </FormDescription>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                 />
                 <FormField
                   control={form.control}
                   name="location"
@@ -649,5 +749,3 @@ export default function JobPostForm() {
     </Card>
   );
 }
-
-    

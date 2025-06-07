@@ -1,11 +1,11 @@
 
 "use client";
 
-import type { Job as OriginalJobType, Timestamp } from '@/lib/types'; // Original Job type
+import type { Job as OriginalJobType, Timestamp } from '@/lib/types'; 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Briefcase, MapPin, Zap, CheckCircle, Send, Users, Settings2 } from 'lucide-react'; // Added Settings2 for platform category
+import { Briefcase, MapPin, Zap, CheckCircle, Send, Users, Settings2, Layers } from 'lucide-react'; // Added Layers for modules
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, useCallback } from 'react';
@@ -14,12 +14,12 @@ import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import ViewApplicantsDialog from '@/components/dashboard/recruiter/ViewApplicantsDialog'; 
 
-// Define a type for the job prop that JobListCard can receive
-// Ensure it includes 'technologies' as per the updated Job type
+
 interface JobForCard extends Omit<OriginalJobType, 'createdAt' | 'updatedAt' | 'platform'> {
-  id: string; // id must be present
-  platform: string; // Platform category (Salesforce, SAP)
-  technologies: string; // Specific technologies (Kubernetes, AWS)
+  id: string; 
+  platform: string; 
+  technologies: string; 
+  modules?: string; // Added modules
   createdAt?: Timestamp | string;
   updatedAt?: Timestamp | string;
 }
@@ -85,10 +85,6 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
   };
 
   const showApplyAction = !isRecruiterView && userProfile?.role === 'candidate' && job.id;
-
-  // Cast to OriginalJobType for dialogs that expect Timestamps if job comes from client-side fetch.
-  // If dates are strings (from server components), dialogs should ideally handle them or convert.
-  // For now, this casting might be okay if dialogs are robust or if direct Timestamp objects are passed.
   const jobForDialog = job as OriginalJobType; 
 
   return (
@@ -118,11 +114,20 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
           <p className="text-sm line-clamp-3">{job.description}</p>
           <div className="pt-2">
             <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-1">Tech Stack:</h4>
-            {/* Display job.technologies instead of job.platform here */}
             {job.technologies.split(',').map(tech => tech.trim()).filter(tech => tech).map(tech => (
               <Badge key={tech} variant="secondary" className="mr-1 mb-1">{tech}</Badge>
             ))}
           </div>
+          {job.modules && job.modules.trim() !== "" && (
+            <div className="pt-2">
+              <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-1 flex items-center">
+                <Layers className="h-3 w-3 mr-1" /> Modules/Specializations:
+              </h4>
+              {job.modules.split(',').map(mod => mod.trim()).filter(mod => mod).map(mod => (
+                <Badge key={mod} variant="outline" className="mr-1 mb-1 bg-muted/50 border-muted-foreground/30">{mod}</Badge>
+              ))}
+            </div>
+          )}
         </CardContent>
         <CardFooter className="border-t pt-4 flex justify-end">
           {isRecruiterView && userProfile?.role === 'recruiter' && job.id ? (
@@ -147,7 +152,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
 
       {job.id && showApplyAction && !isRecruiterView && (
         <ApplyJobDialog
-          job={jobForDialog} // Pass the correctly typed job object
+          job={jobForDialog} 
           open={isApplyDialogOpen}
           onOpenChange={setIsApplyDialogOpen}
           onApplicationSubmitted={handleApplicationSubmitted}
@@ -156,7 +161,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
 
       {job.id && isRecruiterView && userProfile?.role === 'recruiter' && (
         <ViewApplicantsDialog
-            job={jobForDialog} // Pass the correctly typed job object
+            job={jobForDialog} 
             open={isViewApplicantsDialogOpen}
             onOpenChange={setIsViewApplicantsDialogOpen}
         />

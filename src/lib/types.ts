@@ -19,7 +19,8 @@ export interface Job {
   title: string;
   description: string;
   platform: string; // This is the new platform category e.g. Salesforce, SAP
-  technologies: string; // Renamed from platform, for specific tech e.g. Kubernetes, AWS, GCP
+  technologies: string; // Comma-separated specific tech e.g. Kubernetes, AWS, GCP
+  modules?: string; // Optional: Comma-separated modules e.g. Sales Cloud, FI/CO
   location: string;
   contractType: ContractType;
   experienceLevel: ExperienceLevel;
