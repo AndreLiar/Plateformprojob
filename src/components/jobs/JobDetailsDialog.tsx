@@ -63,15 +63,15 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-6">
-        <DialogHeader> {/* Removed pr-6 as parent DialogContent now has p-6 */}
+        <DialogHeader>
           <DialogTitle className="text-2xl font-headline text-primary">{job.title}</DialogTitle>
           <DialogDescription className="flex items-center text-sm text-muted-foreground">
             <Clock className="h-4 w-4 mr-1.5" /> Posted {postedDate}
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-grow min-h-0"> {/* Simplified ScrollArea classes */}
-          <div className="space-y-4 py-4"> {/* py-4 for internal vertical padding of scrollable content */}
+        <ScrollArea className="flex-1 overflow-y-auto"> {/* Changed classes here */}
+          <div className="space-y-4 py-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <div className="flex items-start">
                 <Settings2 className="h-4 w-4 mr-2 mt-0.5 text-primary shrink-0" />
@@ -136,7 +136,7 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
           </div>
         </ScrollArea>
 
-        <DialogFooter className="pt-4 border-t mt-auto gap-2 sm:gap-0">
+        <DialogFooter className="pt-4 border-t gap-2 sm:gap-0"> {/* Removed mt-auto */}
           <DialogClose asChild>
             <Button variant="outline">Close</Button>
           </DialogClose>
