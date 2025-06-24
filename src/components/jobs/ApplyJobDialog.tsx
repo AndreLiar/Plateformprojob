@@ -20,6 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, UploadCloud } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import { analyzeCvAgainstJob, type AnalyzeCvInput, type AnalyzeCvOutput } from '@/ai/flows/analyze-cv-flow';
 
 interface ApplyJobDialogProps {
   job: Job;
@@ -78,7 +79,7 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
 
     let cvUrl: string | null = null;
     let cloudinaryPublicId: string | null = null;
-    let cvProcessingErrorMessage: string | null = null;
+    let cvUploadResult: any = null;
 
     try {
       setSubmissionStatus('Uploading CV...');
@@ -90,28 +91,61 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         body: formData,
       });
 
-      const uploadResult = await uploadResponse.json();
+      cvUploadResult = await uploadResponse.json();
 
-      if (uploadResponse.ok && uploadResult.success && uploadResult.url) {
-        cvUrl = uploadResult.url;
-        cloudinaryPublicId = uploadResult.publicId || null;
+      if (uploadResponse.ok && cvUploadResult.success && cvUploadResult.url) {
+        cvUrl = cvUploadResult.url;
+        cloudinaryPublicId = cvUploadResult.publicId || null;
       } else {
-        cvProcessingErrorMessage = uploadResult.error || 'CV upload failed. The server returned an error.';
-        setUploadError(cvProcessingErrorMessage);
+        throw new Error(cvUploadResult.error || 'CV upload failed. The server returned an error.');
       }
     } catch (error: any) {
       console.error('Critical CV Upload Fetch Error:', error);
-      cvProcessingErrorMessage = `CV processing failed due to a network or client-side error: ${error.message}.`;
-      setUploadError(cvProcessingErrorMessage);
+      const errorMessage = `CV processing failed: ${error.message}.`;
+      setUploadError(errorMessage);
+      toast({ variant: "destructive", title: "Upload Failed", description: errorMessage });
+      setIsSubmitting(false);
+      setSubmissionStatus('');
+      return;
     }
     
-    if (cvProcessingErrorMessage) {
-      toast({
-        variant: "destructive",
-        title: "CV Processing Failed",
-        description: `${cvProcessingErrorMessage} Your application will be submitted, but the CV might not be available.`,
-        duration: 10000
-      });
+    let aiAnalysisResult: AnalyzeCvOutput | null = null;
+    // Only run analysis if text was successfully extracted
+    if (cvUploadResult?.extractedText) {
+        setSubmissionStatus('Performing AI analysis...');
+        try {
+            const fileBuffer = await cvFile.arrayBuffer();
+            const base64String = Buffer.from(fileBuffer).toString('base64');
+            const dataUri = `data:${cvFile.type};base64,${base64String}`;
+            
+            const analysisInput: AnalyzeCvInput = {
+                cvDataUri: dataUri,
+                cvTextContent: cvUploadResult.extractedText,
+                jobTitle: job.title,
+                jobDescription: job.description,
+                jobTechnologies: job.technologies,
+                jobExperienceLevel: job.experienceLevel,
+            };
+            aiAnalysisResult = await analyzeCvAgainstJob(analysisInput);
+            
+            if (aiAnalysisResult.score > 0) {
+              toast({ title: "AI Analysis Complete", description: `CV scored ${aiAnalysisResult.score}/100.` });
+            } else {
+              // Show the summary from the flow which often contains the reason for a 0 score.
+              toast({ variant: "default", title: "AI Analysis Note", description: aiAnalysisResult.summary, duration: 8000 });
+            }
+
+        } catch (aiError: any) {
+            console.error("Error calling AI analysis flow:", aiError);
+            toast({
+                variant: "destructive",
+                title: "AI Analysis Failed",
+                description: "Could not perform AI analysis, but the application will still be submitted."
+            });
+        }
+    } else if (cvUploadResult?.extractionError) {
+        // Inform user if extraction failed but upload succeeded
+        toast({ title: "AI Analysis Skipped", description: cvUploadResult.extractionError, duration: 8000 });
     }
 
     if (cvUrl) {
@@ -136,7 +170,7 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
     try {
       setSubmissionStatus('Saving application...');
       const appCollectionRef = collection(db, 'applications');
-      const applicationData: any = {
+      const applicationData = {
         candidateId: user.uid,
         candidateName: userProfile.displayName || user.displayName || user.email,
         candidateEmail: userProfile.email || user.email,
@@ -146,18 +180,18 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         cvUrl: cvUrl,
         cloudinaryPublicId: cloudinaryPublicId,
         appliedAt: serverTimestamp(),
-        status: 'Applied',
-        aiScore: null,
-        aiAnalysisSummary: "AI Analysis: Coming Soon",
-        aiStrengths: [],
-        aiWeaknesses: [],
+        status: 'Applied' as const,
+        aiScore: aiAnalysisResult?.score ?? null,
+        aiAnalysisSummary: aiAnalysisResult?.summary ?? (cvUploadResult?.extractionError || "AI analysis was not performed."),
+        aiStrengths: aiAnalysisResult?.strengths ?? [],
+        aiWeaknesses: aiAnalysisResult?.weaknesses ?? [],
       };
 
       await addDoc(appCollectionRef, applicationData);
 
       toast({
         title: 'Application Submitted!',
-        description: `You've successfully applied for ${job.title}. ${cvUrl ? 'Your CV has been attached.' : 'There was an issue attaching your CV.'}`
+        description: `You've successfully applied for ${job.title}.`
       });
       
       await refreshUserProfile();
@@ -200,7 +234,7 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         <DialogHeader>
           <DialogTitle className="font-headline text-2xl text-primary">Apply for: {job.title}</DialogTitle>
           <DialogDescription>
-            Upload your CV to apply. Supported: PDF, DOC, DOCX (Max 5MB).
+            Upload your CV to apply. Supported: PDF, DOC, DOCX (Max 5MB). AI analysis is only available for PDFs.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6 py-4">

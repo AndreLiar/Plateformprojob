@@ -144,7 +144,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
         appliedAt: serverTimestamp(),
         status: 'Applied' as const,
         aiScore: null,
-        aiAnalysisSummary: "AI Analysis: Coming Soon",
+        aiAnalysisSummary: "AI analysis not available for one-click apply.",
         aiStrengths: [],
         aiWeaknesses: [],
       };
@@ -222,7 +222,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
             </div>
           )}
         </CardContent>
-        <CardFooter className="border-t pt-4 flex flex-wrap justify-between items-center gap-y-2 gap-x-2">
+        <CardFooter className="border-t pt-4 flex flex-wrap justify-between items-center gap-y-2 gap-x-4">
           <Button variant="outline" size="sm" onClick={() => setIsJobDetailsDialogOpen(true)}>
             <Eye className="mr-2 h-4 w-4" /> View Details
           </Button>

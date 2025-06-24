@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { Application, Job as OriginalJobType } from '@/lib/types';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore'; // Removed doc, updateDoc
+import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,13 +17,13 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, ExternalLink, UserX, FileText, AlertTriangle, Sparkles, Info } from 'lucide-react'; // Removed TrendingUp, ChevronsUpDown
+import { Loader2, ExternalLink, UserX, FileText, AlertTriangle, Sparkles, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
-import { TooltipProvider } from '@/components/ui/tooltip'; // Removed Tooltip, TooltipContent, TooltipTrigger
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface JobForDialog extends Omit<OriginalJobType, 'createdAt' | 'updatedAt'> {
   createdAt?: Timestamp | string;
@@ -61,6 +61,9 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
         ...doc.data(),
       } as Application));
 
+      // Sort applications by AI score in descending order. Null/undefined scores go to the bottom.
+      fetchedApplications.sort((a, b) => (b.aiScore ?? -1) - (a.aiScore ?? -1));
+
       setApplications(fetchedApplications);
     } catch (error: any) {
       console.error("Error fetching applications:", error);
@@ -88,6 +91,13 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
     }
   }, [open, fetchApplications]);
 
+  const getScoreBadgeVariant = (score: number | null | undefined): "default" | "secondary" | "destructive" | "outline" => {
+    if (score === null || score === undefined) return "outline";
+    if (score > 75) return "default"; // Will use primary color, good for high scores
+    if (score > 40) return "secondary"; // Neutral for medium scores
+    return "destructive"; // Red for low scores
+  };
+
 
   if (!job) return null;
 
@@ -97,10 +107,10 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
         <DialogHeader className="p-6 pb-4 border-b">
           <DialogTitle className="font-headline text-2xl text-primary">Applicants for: {job.title}</DialogTitle>
           <DialogDescription>
-            Review candidates who applied. AI insights are coming soon.
+            Review candidates who applied, sorted by AI score.
           </DialogDescription>
         </DialogHeader>
-        <TooltipProvider> {/* TooltipProvider is still needed for other potential tooltips within ShadCN components */}
+        <TooltipProvider>
         <ScrollArea className="flex-grow">
           <div className="px-6">
             {loading ? (
@@ -134,36 +144,43 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
                 <Table className="min-w-full">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[25%]">Candidate</TableHead>
-                      <TableHead className="w-[25%]">Email</TableHead>
-                      <TableHead className="w-[10%]">
-                        <div className="flex items-center">
-                          <Sparkles className="mr-1 h-3 w-3 text-primary opacity-70" /> AI Score
-                        </div>
+                      <TableHead className="w-[20%]">Candidate</TableHead>
+                      <TableHead className="w-[10%] text-center">
+                         <div className="flex items-center justify-center gap-1">
+                            <Sparkles className="h-3 w-3 text-primary opacity-70" />
+                            AI Score
+                             <Tooltip>
+                              <TooltipTrigger asChild><Info className="h-3 w-3 cursor-help opacity-60" /></TooltipTrigger>
+                              <TooltipContent><p>CV match score (0-100). Higher is better.</p></TooltipContent>
+                            </Tooltip>
+                         </div>
                       </TableHead>
-                      <TableHead className="w-[20%]">
-                        <div className="flex items-center">
-                            <Info className="mr-1 h-3 w-3 text-primary opacity-70" /> AI Summary
-                        </div>
-                      </TableHead>
-                      <TableHead className="w-[10%]">
-                        Applied On
-                      </TableHead>
+                      <TableHead className="w-[30%]">AI Summary</TableHead>
+                      <TableHead className="w-[20%]">Applied On</TableHead>
                       <TableHead className="w-[10%] text-right">CV</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {applications.map((app) => (
                       <TableRow key={app.id} className="hover:bg-muted/20">
-                        <TableCell className="font-medium py-3">{app.candidateName || 'N/A'}</TableCell>
-                        <TableCell className="py-3">{app.candidateEmail || 'N/A'}</TableCell>
+                        <TableCell className="font-medium py-3">
+                            <div className="font-semibold">{app.candidateName || 'N/A'}</div>
+                            <div className="text-xs text-muted-foreground">{app.candidateEmail || 'N/A'}</div>
+                        </TableCell>
                         <TableCell className="py-3 text-center">
-                            <Badge variant="outline" className="text-xs text-muted-foreground">
-                              N/A
+                            <Badge variant={getScoreBadgeVariant(app.aiScore)} className="text-base font-bold">
+                              {app.aiScore ?? 'N/A'}
                             </Badge>
                         </TableCell>
-                        <TableCell className="py-3 text-xs text-muted-foreground">
-                            {app.aiAnalysisSummary || "Coming Soon"}
+                        <TableCell className="py-3 text-xs text-muted-foreground max-w-sm truncate">
+                          <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div>{app.aiAnalysisSummary || "N/A"}</div>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs whitespace-normal">
+                                <p>{app.aiAnalysisSummary || "No summary available."}</p>
+                              </TooltipContent>
+                            </Tooltip>
                         </TableCell>
                         <TableCell className="py-3 text-xs">
                           {app.appliedAt?.toDate ? format(app.appliedAt.toDate(), 'PPp') : 'N/A'}
@@ -197,5 +214,3 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
     </Dialog>
   );
 }
-
-    

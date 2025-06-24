@@ -2,14 +2,13 @@
 // src/app/api/upload-cv/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import { uploadStreamToCloudinary } from '@/lib/cloudinary';
-// pdf-parse and mammoth are removed as text extraction is temporarily disabled
+import pdf from 'pdf-parse';
 
 export async function POST(request: NextRequest) {
   let cvUrl: string | null = null;
   let cvPublicId: string | null = null;
-  // Text extraction is deferred, so these will be null or default messages
-  const extractedText: string | null = null; 
-  const extractionError: string | null = "Text extraction feature is temporarily unavailable.";
+  let extractedText: string | null = null;
+  let extractionError: string | null = null;
 
   try {
     const formData = await request.formData();
@@ -46,8 +45,18 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // --- Text Extraction Logic Removed Temporarily ---
-    // The extractedText and extractionError variables are initialized above.
+    // --- Text Extraction Logic (PDF only for now) ---
+    if (file.type === 'application/pdf') {
+      try {
+        const data = await pdf(buffer);
+        extractedText = data.text;
+      } catch (err: any) {
+        console.error("PDF parsing error in API route:", err);
+        extractionError = `Failed to extract text from PDF: ${err.message || "Unknown parsing error"}. Application will proceed without AI analysis.`;
+      }
+    } else {
+      extractionError = "Text extraction is currently only supported for PDF files. Application will proceed without AI analysis.";
+    }
 
     // --- Cloudinary Upload ---
     const originalFilename = file.name.split('.').slice(0, -1).join('.') || `cv_${Date.now()}`;
@@ -65,7 +74,7 @@ export async function POST(request: NextRequest) {
         url: cvUrl,
         publicId: cvPublicId,
         extractedText: extractedText, 
-        extractionError: extractionError, // Will indicate feature is unavailable
+        extractionError: extractionError,
       });
     } else {
       const cloudinaryErrorMessage = (cloudinaryResult as any)?.error?.message || 'Cloudinary upload failed.';
@@ -73,8 +82,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         error: `Cloudinary upload failed: ${cloudinaryErrorMessage}.`,
-        extractedText, 
-        extractionError, // Will indicate feature is unavailable
+        extractedText,
+        extractionError,
         url: null,
         publicId: null,
       }, { status: 500 });
@@ -106,8 +115,8 @@ export async function POST(request: NextRequest) {
       { 
         success: false, 
         error: clientMessage,
-        extractedText: null, // Ensure null if critical error
-        extractionError: "CV processing encountered a critical server error.", // Specific error for this case
+        extractedText: null, 
+        extractionError: "CV processing encountered a critical server error.",
         url: cvUrl, 
         publicId: cvPublicId,
         _dev_error_details: messageForDev 
