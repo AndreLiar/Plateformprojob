@@ -155,9 +155,11 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
           {(job.technologies && typeof job.technologies === 'string' && job.technologies.trim() !== "") && (
             <div className="pt-2">
               <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-1">Tech Stack:</h4>
-              {job.technologies.split(',').map(tech => tech.trim()).filter(tech => tech).map(tech => (
-                  <Badge key={tech} variant="secondary" className="mr-1 mb-1">{tech}</Badge>
-              ))}
+              <div className="flex flex-wrap gap-1">
+                {job.technologies.split(',').map(tech => tech.trim()).filter(tech => tech).map(tech => (
+                    <Badge key={tech} variant="secondary" className="mr-1 mb-1">{tech}</Badge>
+                ))}
+              </div>
             </div>
           )}
 
@@ -166,13 +168,15 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
               <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-1 flex items-center">
                 <Layers className="h-3 w-3 mr-1" /> Modules/Specializations:
               </h4>
-              {job.modules.split(',').map(mod => mod.trim()).filter(mod => mod).map(mod => (
-                <Badge key={mod} variant="outline" className="mr-1 mb-1 bg-muted/50 border-muted-foreground/30">{mod}</Badge>
-              ))}
+              <div className="flex flex-wrap gap-1">
+                {job.modules.split(',').map(mod => mod.trim()).filter(mod => mod).map(mod => (
+                  <Badge key={mod} variant="outline" className="mr-1 mb-1 bg-muted/50 border-muted-foreground/30">{mod}</Badge>
+                ))}
+              </div>
             </div>
           )}
         </CardContent>
-        <CardFooter className="border-t pt-4 flex flex-wrap justify-end items-center gap-2">
+        <CardFooter className="border-t pt-4 flex flex-wrap justify-between items-center gap-y-2 gap-x-2">
           <Button variant="outline" size="sm" onClick={() => setIsJobDetailsDialogOpen(true)}>
             <Eye className="mr-2 h-4 w-4" /> View Details
           </Button>
@@ -184,7 +188,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
           )}
 
           {showApplyAction && !authLoading && (
-             <>
+             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
                 size="icon"
@@ -207,7 +211,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
                   <Send className="mr-2 h-4 w-4" /> Apply Now
                 </Button>
               )}
-            </>
+            </div>
           )}
         </CardFooter>
       </Card>
