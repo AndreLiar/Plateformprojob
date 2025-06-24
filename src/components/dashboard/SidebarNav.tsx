@@ -24,10 +24,11 @@ export default function SidebarNav() {
           <Link href={item.href} legacyBehavior passHref>
             <SidebarMenuButton
               asChild
-              isActive={pathname === item.href || (item.href === '/dashboard/my-jobs' && pathname === '/dashboard')}
+              isActive={pathname === item.href}
               className={cn(
-                "w-full justify-start",
-                (pathname === item.href || (item.href === '/dashboard' && pathname.endsWith('/my-jobs'))) && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90" 
+                "w-full justify-start"
+                // The complex and inconsistent logic was here. 
+                // It's removed because the `isActive` prop correctly handles the active state styling.
               )}
               tooltip={{ children: item.label, side: 'right', align: 'center' }}
             >
