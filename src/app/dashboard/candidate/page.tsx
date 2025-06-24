@@ -4,12 +4,13 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { UserCircle, Search, Briefcase, FileText, Loader2, UserCheck } from "lucide-react";
+import { UserCircle, Search, Briefcase, FileText, Loader2, UserCheck, ArrowRight } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getCountFromServer } from "firebase/firestore";
 import { Progress } from "@/components/ui/progress";
+import { calculateProfileStrength } from "@/lib/utils";
 
 export default function CandidateDashboardPage() {
   const { user, userProfile, loading: authLoading } = useAuth();
@@ -40,11 +41,20 @@ export default function CandidateDashboardPage() {
     }
   }, [user, authLoading]);
 
+  const profileStrength = calculateProfileStrength(userProfile);
+
+  const getProfileStrengthMessage = () => {
+    if (profileStrength < 50) return "Your profile is looking a bit sparse. Add more details to get noticed!";
+    if (profileStrength < 80) return "Great start! A few more details will make your profile stand out.";
+    if (profileStrength < 100) return "Your profile is almost perfect! Just a few final touches.";
+    return "Your profile is complete and looking great! Recruiters can now see your full potential.";
+  };
+
   return (
     <div className="space-y-8">
       <Card className="shadow-lg rounded-lg overflow-hidden">
         <CardHeader className="bg-gradient-to-r from-primary to-primary/80 text-primary-foreground p-6">
-          <CardTitle className="text-3xl font-headline">Welcome, Candidate!</CardTitle>
+          <CardTitle className="text-3xl font-headline">Welcome, {userProfile?.displayName || 'Candidate'}!</CardTitle>
           <CardDescription className="text-primary-foreground/90 mt-1">
             This is your personal dashboard. Manage your profile, track applications, and find your next opportunity.
           </CardDescription>
@@ -95,14 +105,14 @@ export default function CandidateDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-4 mb-2">
-              <Progress value={40} className="w-full" aria-label="Profile completion 40%" />
-              <span className="text-lg font-bold text-primary">40%</span>
+              <Progress value={profileStrength} className="w-full" aria-label={`Profile completion ${profileStrength}%`} />
+              <span className="text-lg font-bold text-primary">{profileStrength}%</span>
             </div>
             <p className="text-muted-foreground text-xs mb-4">
-              Complete your headline, summary, and skills to improve your visibility.
+              {getProfileStrengthMessage()}
             </p>
             <Button variant="outline" size="sm" asChild>
-              <Link href="/dashboard/candidate/profile">Update Profile &rarr;</Link>
+              <Link href="/dashboard/candidate/profile">Update Profile <ArrowRight className="ml-1 h-4 w-4" /></Link>
             </Button>
           </CardContent>
         </Card>

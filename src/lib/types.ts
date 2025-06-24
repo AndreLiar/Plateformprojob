@@ -1,4 +1,3 @@
-
 import type { Timestamp } from 'firebase/firestore';
 
 export interface UserProfile {
@@ -10,6 +9,15 @@ export interface UserProfile {
   freePostsRemaining?: number; // Optional for existing users, will be set for new ones
   purchasedPostsRemaining?: number; // Optional for existing users
   savedJobs?: string[]; // Array of saved job IDs
+  
+  // Candidate specific fields
+  phone?: string;
+  linkedin?: string;
+  headline?: string;
+  summary?: string;
+  skills?: string; // Comma-separated string of skills
+  cvUrl?: string;
+  cvPublicId?: string;
 }
 
 export type ContractType = 'Full-time' | 'Part-time' | 'Contract';
