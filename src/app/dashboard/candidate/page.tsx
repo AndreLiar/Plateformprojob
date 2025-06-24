@@ -12,7 +12,7 @@ import { collection, query, where, getCountFromServer } from "firebase/firestore
 import { Progress } from "@/components/ui/progress";
 
 export default function CandidateDashboardPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const [applicationCount, setApplicationCount] = useState<number | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
 
@@ -127,8 +127,8 @@ export default function CandidateDashboardPage() {
                     <span className="text-muted-foreground"> Applications Sent</span>
                   </li>
                   <li>
-                    <span className="font-medium text-foreground">0</span>
-                    <span className="text-muted-foreground"> Saved Jobs (Coming Soon)</span>
+                    <span className="font-medium text-foreground">{userProfile?.savedJobs?.length ?? 0}</span>
+                    <span className="text-muted-foreground"> Saved Jobs</span>
                   </li>
                 </ul>
               </>

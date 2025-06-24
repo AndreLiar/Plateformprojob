@@ -9,6 +9,7 @@ export interface UserProfile {
   createdAt: Timestamp;
   freePostsRemaining?: number; // Optional for existing users, will be set for new ones
   purchasedPostsRemaining?: number; // Optional for existing users
+  savedJobs?: string[]; // Array of saved job IDs
 }
 
 export type ContractType = 'Full-time' | 'Part-time' | 'Contract';
@@ -49,4 +50,3 @@ export interface Application {
   aiStrengths?: string[]; // Array of AI-identified strengths
   aiWeaknesses?: string[]; // Array of AI-identified weaknesses/gaps
 }
-
