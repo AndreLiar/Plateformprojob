@@ -11,7 +11,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, useCallback } from 'react';
 import ApplyJobDialog from '@/components/jobs/ApplyJobDialog';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, limit, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, doc, updateDoc, arrayUnion, arrayRemove, addDoc, serverTimestamp } from 'firebase/firestore';
 import ViewApplicantsDialog from '@/components/dashboard/recruiter/ViewApplicantsDialog';
 import JobDetailsDialog from '@/components/jobs/JobDetailsDialog';
 import { useToast } from "@/hooks/use-toast";
@@ -42,6 +42,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
   const [checkingApplicationStatus, setCheckingApplicationStatus] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isQuickApplying, setIsQuickApplying] = useState(false);
 
   useEffect(() => {
     if (userProfile?.savedJobs && job.id) {
@@ -112,8 +113,8 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
         await updateDoc(userDocRef, { savedJobs: arrayUnion(job.id) });
         toast({ title: "Job Saved!", description: `"${job.title}" has been added to your saved jobs.` });
       }
-      setIsSaved(!isSaved); // Toggle state locally for immediate feedback
-      await refreshUserProfile(); // Refresh context
+      setIsSaved(!isSaved); 
+      await refreshUserProfile(); 
     } catch (error) {
       console.error("Error saving job:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to update saved jobs. Please try again." });
@@ -122,8 +123,53 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
     }
   };
 
+  const handleOneClickApply = async () => {
+    if (!user || !userProfile || !userProfile.cvUrl || !job.id) {
+      toast({ variant: "destructive", title: "Cannot Apply", description: "Your profile is missing a CV or there's an issue with the job details." });
+      return;
+    }
+    
+    setIsQuickApplying(true);
+    try {
+      const appCollectionRef = collection(db, 'applications');
+      const applicationData = {
+        candidateId: user.uid,
+        candidateName: userProfile.displayName || userProfile.email,
+        candidateEmail: user.email,
+        jobId: job.id,
+        jobTitle: job.title,
+        recruiterId: job.recruiterId,
+        cvUrl: userProfile.cvUrl,
+        cloudinaryPublicId: userProfile.cvPublicId || null,
+        appliedAt: serverTimestamp(),
+        status: 'Applied' as const,
+        aiScore: null,
+        aiAnalysisSummary: "AI Analysis: Coming Soon",
+        aiStrengths: [],
+        aiWeaknesses: [],
+      };
+
+      await addDoc(appCollectionRef, applicationData);
+
+      toast({
+        title: 'Application Submitted!',
+        description: `You've successfully applied for ${job.title} using your saved CV.`
+      });
+      checkApplicationStatus();
+    } catch (error: any) {
+      console.error("Error during one-click apply:", error);
+      toast({
+        variant: "destructive",
+        title: "Application Failed",
+        description: error.message || "Could not submit your application. Please try again."
+      });
+    } finally {
+      setIsQuickApplying(false);
+    }
+  };
 
   const showApplyAction = !isRecruiterView && userProfile?.role === 'candidate' && job.id;
+  const canQuickApply = !!userProfile?.cvUrl;
   const jobForDialogs = job as OriginalJobType;
 
   return (
@@ -206,9 +252,19 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
                 <Button variant="ghost" size="sm" disabled className="text-green-600">
                   <CheckCircle className="mr-2 h-4 w-4" /> Applied
                 </Button>
+              ) : isQuickApplying ? (
+                 <Button variant="default" size="sm" disabled className="bg-accent/80">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Applying...
+                </Button>
               ) : (
-                <Button variant="default" size="sm" onClick={() => setIsApplyDialogOpen(true)} className="bg-accent hover:bg-accent/90 text-accent-foreground">
-                  <Send className="mr-2 h-4 w-4" /> Apply Now
+                <Button 
+                    variant="default" 
+                    size="sm" 
+                    onClick={canQuickApply ? handleOneClickApply : () => setIsApplyDialogOpen(true)} 
+                    className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                    title={canQuickApply ? "Apply using your saved CV" : "Upload CV and apply"}
+                >
+                    <Send className="mr-2 h-4 w-4" /> Apply Now
                 </Button>
               )}
             </div>
@@ -220,7 +276,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
         job={jobForDialogs}
         open={isJobDetailsDialogOpen}
         onOpenChange={setIsJobDetailsDialogOpen}
-        onApply={showApplyAction && !hasApplied ? () => setIsApplyDialogOpen(true) : undefined}
+        onApply={showApplyAction && !hasApplied ? (canQuickApply ? handleOneClickApply : () => setIsApplyDialogOpen(true)) : undefined}
         isCandidateView={showApplyAction && !hasApplied}
       />
 
