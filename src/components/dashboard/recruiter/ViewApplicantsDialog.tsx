@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from 'react';
-import type { Application, Job as OriginalJobType } from '@/lib/types';
+import type { Application, Job as OriginalJobType, ApplicationStatus } from '@/lib/types';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { format } from 'date-fns';
@@ -24,6 +24,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth } from '@/hooks/useAuth';
 
 interface JobForDialog extends Omit<OriginalJobType, 'createdAt' | 'updatedAt'> {
   createdAt?: Timestamp | string;
@@ -37,8 +39,10 @@ interface ViewApplicantsDialogProps {
 }
 
 const firestoreIndexCreationUrl = "https://console.firebase.google.com/v1/r/project/marketplace-79e9c/firestore/indexes?create_composite=ClZwcm9qZWN0cy9tYXJrZXRwbGFjZS03OWU5Yy9kYXRhYmFzZXMvKGRlZmF1bHQpL2NvbGxlY3Rpb25Hcm91cHMvYXBwbGljYXRpb25zL2luZGV4ZXMvXxABGgkKBWpvYklkEAEaDQoJYXBwbGllZEF0EAIaDAoIX19uYW1lX18QAg";
+const recruiterStatuses: ApplicationStatus[] = ["Applied", "Under Review", "Interviewing", "Offer Extended", "Rejected"];
 
 export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewApplicantsDialogProps) {
+  const { user } = useAuth();
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(false);
   const [missingIndexError, setMissingIndexError] = useState(false);
@@ -61,7 +65,6 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
         ...doc.data(),
       } as Application));
 
-      // Sort applications by AI score in descending order. Null/undefined scores go to the bottom.
       fetchedApplications.sort((a, b) => (b.aiScore ?? -1) - (a.aiScore ?? -1));
 
       setApplications(fetchedApplications);
@@ -86,28 +89,54 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
     if (open) {
       fetchApplications();
     } else {
-      setApplications([]); // Clear applications when dialog closes
+      setApplications([]);
       setMissingIndexError(false);
     }
   }, [open, fetchApplications]);
 
-  const getScoreBadgeVariant = (score: number | null | undefined): "default" | "secondary" | "destructive" | "outline" => {
-    if (score === null || score === undefined) return "outline";
-    if (score > 75) return "default"; // Will use primary color, good for high scores
-    if (score > 40) return "secondary"; // Neutral for medium scores
-    return "destructive"; // Red for low scores
+  const handleStatusChange = async (applicationId: string, newStatus: ApplicationStatus) => {
+    const originalApplications = [...applications];
+    setApplications(prev =>
+      prev.map(app => (app.id === applicationId ? { ...app, status: newStatus } : app))
+    );
+
+    try {
+      const response = await fetch('/api/applications/update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ applicationId, status: newStatus, recruiterId: user?.uid }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update status');
+      }
+      
+      toast({ title: "Status Updated", description: `Candidate status set to "${newStatus}".` });
+    } catch (error: any) {
+      console.error("Error updating status:", error);
+      toast({ variant: "destructive", title: "Update Failed", description: error.message });
+      setApplications(originalApplications); // Revert on error
+    }
   };
 
+
+  const getScoreBadgeVariant = (score: number | null | undefined): "default" | "secondary" | "destructive" | "outline" => {
+    if (score === null || score === undefined) return "outline";
+    if (score > 75) return "default";
+    if (score > 40) return "secondary";
+    return "destructive";
+  };
 
   if (!job) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[90vh] flex flex-col p-0">
+      <DialogContent className="sm:max-w-6xl max-h-[90vh] flex flex-col p-0">
         <DialogHeader className="p-6 pb-4 border-b">
           <DialogTitle className="font-headline text-2xl text-primary">Applicants for: {job.title}</DialogTitle>
           <DialogDescription>
-            Review candidates who applied, sorted by AI score.
+            Review candidates who applied. Sorted by AI score.
           </DialogDescription>
         </DialogHeader>
         <TooltipProvider>
@@ -122,9 +151,7 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
                 <AlertTriangle className="h-5 w-5" />
                 <AlertTitle>Firestore Index Required</AlertTitle>
                 <AlertDescription>
-                  <p className="mb-2">
-                    To view applicants efficiently, a Firestore index is likely needed.
-                  </p>
+                  <p className="mb-2">To view applicants efficiently, a Firestore index is likely needed.</p>
                   <p>
                     If you see this message, please consider adding the composite index for 'jobId' (ascending) and 'appliedAt' (descending) on the 'applications' collection in your Firebase console.
                     <Link href={firestoreIndexCreationUrl} target="_blank" rel="noopener noreferrer" className="text-destructive-foreground underline ml-1">
@@ -144,8 +171,8 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
                 <Table className="min-w-full">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[20%]">Candidate</TableHead>
-                      <TableHead className="w-[10%] text-center">
+                      <TableHead className="w-[18%]">Candidate</TableHead>
+                      <TableHead className="w-[8%] text-center">
                          <div className="flex items-center justify-center gap-1">
                             <Sparkles className="h-3 w-3 text-primary opacity-70" />
                             AI Score
@@ -155,8 +182,9 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
                             </Tooltip>
                          </div>
                       </TableHead>
-                      <TableHead className="w-[30%]">AI Summary</TableHead>
-                      <TableHead className="w-[20%]">Applied On</TableHead>
+                      <TableHead className="w-[25%]">AI Summary</TableHead>
+                      <TableHead className="w-[15%]">Status</TableHead>
+                      <TableHead className="w-[17%]">Applied On</TableHead>
                       <TableHead className="w-[10%] text-right">CV</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -181,6 +209,23 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
                                 <p>{app.aiAnalysisSummary || "No summary available."}</p>
                               </TooltipContent>
                             </Tooltip>
+                        </TableCell>
+                         <TableCell>
+                          <Select
+                            value={app.status}
+                            onValueChange={(newStatus) => handleStatusChange(app.id as string, newStatus as ApplicationStatus)}
+                          >
+                            <SelectTrigger className="text-xs h-8">
+                              <SelectValue placeholder="Set status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {recruiterStatuses.map(status => (
+                                <SelectItem key={status} value={status} className="text-xs">
+                                  {status}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell className="py-3 text-xs">
                           {app.appliedAt?.toDate ? format(app.appliedAt.toDate(), 'PPp') : 'N/A'}
