@@ -19,43 +19,49 @@ export default function Header() {
   return (
     <header className="bg-card border-b border-border shadow-sm">
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-        <Link href="/" className="text-2xl font-headline font-bold text-primary">
+        <Link href="/" className="text-xl md:text-2xl font-headline font-bold text-primary">
           PlatformPro Jobs
         </Link>
-        <nav className="flex items-center gap-2 md:gap-4">
+        <nav className="flex items-center gap-1 sm:gap-2 md:gap-4">
           {loading ? (
             <div className="h-9 w-24 rounded-md bg-muted animate-pulse" /> 
           ) : user && userProfile ? ( // Ensure userProfile is also loaded
             <>
               <Button variant="ghost" asChild>
                 <Link href="/jobs">
-                  <Search className="mr-2 h-4 w-4" /> Browse Jobs
+                  <Search className="h-4 w-4 md:mr-2" />
+                  <span className="hidden md:inline">Browse Jobs</span>
                 </Link>
               </Button>
               <Button variant="ghost" asChild>
                 <Link href={userProfile.role === 'recruiter' ? "/dashboard" : "/dashboard/candidate"}>
-                  <LayoutDashboard className="mr-2 h-4 w-4" /> Dashboard
+                  <LayoutDashboard className="h-4 w-4 md:mr-2" />
+                  <span className="hidden md:inline">Dashboard</span>
                 </Link>
               </Button>
               <Button variant="outline" onClick={handleLogout}>
-                <LogOut className="mr-2 h-4 w-4" /> Logout
+                <LogOut className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Logout</span>
               </Button>
             </>
           ) : ( // Handles both non-logged-in users and logged-in users before profile loads
             <>
               <Button variant="ghost" asChild>
                 <Link href="/jobs">
-                  <Search className="mr-2 h-4 w-4" /> Browse Jobs
+                  <Search className="h-4 w-4 md:mr-2" />
+                  <span className="hidden md:inline">Browse Jobs</span>
                 </Link>
               </Button>
               <Button variant="ghost" asChild>
                 <Link href="/login">
-                  <LogIn className="mr-2 h-4 w-4" /> Login
+                  <LogIn className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Login</span>
                 </Link>
               </Button>
               <Button variant="default" asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
                 <Link href="/signup">
-                  <UserPlus className="mr-2 h-4 w-4" /> Sign Up
+                  <UserPlus className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Sign Up</span>
                 </Link>
               </Button>
             </>
@@ -65,3 +71,5 @@ export default function Header() {
     </header>
   );
 }
+
+    

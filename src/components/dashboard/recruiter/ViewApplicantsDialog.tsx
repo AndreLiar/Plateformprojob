@@ -101,87 +101,91 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
           </DialogDescription>
         </DialogHeader>
         <TooltipProvider> {/* TooltipProvider is still needed for other potential tooltips within ShadCN components */}
-        <ScrollArea className="flex-grow px-6">
-          {loading ? (
-            <div className="flex justify-center items-center h-40">
-              <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            </div>
-          ) : missingIndexError ? (
-             <Alert variant="destructive" className="my-4">
-              <AlertTriangle className="h-5 w-5" />
-              <AlertTitle>Firestore Index Required</AlertTitle>
-              <AlertDescription>
-                <p className="mb-2">
-                  To view applicants efficiently, a Firestore index is likely needed.
-                </p>
-                <p>
-                  If you see this message, please consider adding the composite index for 'jobId' (ascending) and 'appliedAt' (descending) on the 'applications' collection in your Firebase console.
-                  <Link href={firestoreIndexCreationUrl} target="_blank" rel="noopener noreferrer" className="text-destructive-foreground underline ml-1">
-                     Click here for a pre-filled index creation link.
-                  </Link>
-                </p>
-              </AlertDescription>
-            </Alert>
-          ) : applications.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-              <UserX className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-              <p className="text-xl font-semibold">No applicants yet.</p>
-              <p>Check back later to see who has applied for this role.</p>
-            </div>
-          ) : (
-            <Table className="min-w-full">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[25%]">Candidate</TableHead>
-                  <TableHead className="w-[25%]">Email</TableHead>
-                  <TableHead className="w-[10%]">
-                    <div className="flex items-center">
-                      <Sparkles className="mr-1 h-3 w-3 text-primary opacity-70" /> AI Score
-                    </div>
-                  </TableHead>
-                  <TableHead className="w-[20%]">
-                     <div className="flex items-center">
-                        <Info className="mr-1 h-3 w-3 text-primary opacity-70" /> AI Summary
-                    </div>
-                  </TableHead>
-                  <TableHead className="w-[10%]">
-                     Applied On
-                  </TableHead>
-                  <TableHead className="w-[10%] text-right">CV</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {applications.map((app) => (
-                  <TableRow key={app.id} className="hover:bg-muted/20">
-                    <TableCell className="font-medium py-3">{app.candidateName || 'N/A'}</TableCell>
-                    <TableCell className="py-3">{app.candidateEmail || 'N/A'}</TableCell>
-                    <TableCell className="py-3 text-center">
-                        <Badge variant="outline" className="text-xs text-muted-foreground">
-                           N/A
-                        </Badge>
-                    </TableCell>
-                    <TableCell className="py-3 text-xs text-muted-foreground">
-                        {app.aiAnalysisSummary || "Coming Soon"}
-                    </TableCell>
-                    <TableCell className="py-3 text-xs">
-                      {app.appliedAt?.toDate ? format(app.appliedAt.toDate(), 'PPp') : 'N/A'}
-                    </TableCell>
-                    <TableCell className="text-right py-3 whitespace-nowrap">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => window.open(app.cvUrl, '_blank')}
-                        disabled={!app.cvUrl}
-                        className="hover:bg-accent hover:text-accent-foreground"
-                      >
-                        <FileText className="mr-2 h-4 w-4" /> View CV <ExternalLink className="ml-1 h-3 w-3" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+        <ScrollArea className="flex-grow">
+          <div className="px-6">
+            {loading ? (
+              <div className="flex justify-center items-center h-40">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+              </div>
+            ) : missingIndexError ? (
+              <Alert variant="destructive" className="my-4">
+                <AlertTriangle className="h-5 w-5" />
+                <AlertTitle>Firestore Index Required</AlertTitle>
+                <AlertDescription>
+                  <p className="mb-2">
+                    To view applicants efficiently, a Firestore index is likely needed.
+                  </p>
+                  <p>
+                    If you see this message, please consider adding the composite index for 'jobId' (ascending) and 'appliedAt' (descending) on the 'applications' collection in your Firebase console.
+                    <Link href={firestoreIndexCreationUrl} target="_blank" rel="noopener noreferrer" className="text-destructive-foreground underline ml-1">
+                      Click here for a pre-filled index creation link.
+                    </Link>
+                  </p>
+                </AlertDescription>
+              </Alert>
+            ) : applications.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground">
+                <UserX className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+                <p className="text-xl font-semibold">No applicants yet.</p>
+                <p>Check back later to see who has applied for this role.</p>
+              </div>
+            ) : (
+              <div className="relative w-full overflow-auto">
+                <Table className="min-w-full">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[25%]">Candidate</TableHead>
+                      <TableHead className="w-[25%]">Email</TableHead>
+                      <TableHead className="w-[10%]">
+                        <div className="flex items-center">
+                          <Sparkles className="mr-1 h-3 w-3 text-primary opacity-70" /> AI Score
+                        </div>
+                      </TableHead>
+                      <TableHead className="w-[20%]">
+                        <div className="flex items-center">
+                            <Info className="mr-1 h-3 w-3 text-primary opacity-70" /> AI Summary
+                        </div>
+                      </TableHead>
+                      <TableHead className="w-[10%]">
+                        Applied On
+                      </TableHead>
+                      <TableHead className="w-[10%] text-right">CV</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {applications.map((app) => (
+                      <TableRow key={app.id} className="hover:bg-muted/20">
+                        <TableCell className="font-medium py-3">{app.candidateName || 'N/A'}</TableCell>
+                        <TableCell className="py-3">{app.candidateEmail || 'N/A'}</TableCell>
+                        <TableCell className="py-3 text-center">
+                            <Badge variant="outline" className="text-xs text-muted-foreground">
+                              N/A
+                            </Badge>
+                        </TableCell>
+                        <TableCell className="py-3 text-xs text-muted-foreground">
+                            {app.aiAnalysisSummary || "Coming Soon"}
+                        </TableCell>
+                        <TableCell className="py-3 text-xs">
+                          {app.appliedAt?.toDate ? format(app.appliedAt.toDate(), 'PPp') : 'N/A'}
+                        </TableCell>
+                        <TableCell className="text-right py-3 whitespace-nowrap">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(app.cvUrl, '_blank')}
+                            disabled={!app.cvUrl}
+                            className="hover:bg-accent hover:text-accent-foreground"
+                          >
+                            <FileText className="mr-2 h-4 w-4" /> View CV <ExternalLink className="ml-1 h-3 w-3" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
         </ScrollArea>
         </TooltipProvider>
         <DialogFooter className="p-6 pt-4 border-t mt-auto">
@@ -193,3 +197,5 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
     </Dialog>
   );
 }
+
+    

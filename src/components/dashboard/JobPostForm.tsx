@@ -655,7 +655,7 @@ export default function JobPostForm() {
                 </Button>
               </div>
 
-               <div className="grid md:grid-cols-2 gap-8">
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <FormField
                   control={form.control}
                   name="technologies"
@@ -887,7 +887,7 @@ export default function JobPostForm() {
                   )}
                 />
               </div>
-              <div className="grid md:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <FormField
                   control={form.control}
                   name="contractType"
@@ -949,3 +949,5 @@ export default function JobPostForm() {
     </Card>
   );
 }
+
+    

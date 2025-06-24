@@ -99,7 +99,7 @@ export default function MyJobsList() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {jobs.map(job => (
             // Pass isRecruiterView={true} to JobListCard
             <JobListCard key={job.id} job={job} isRecruiterView={true} />
@@ -109,3 +109,5 @@ export default function MyJobsList() {
     </div>
   );
 }
+
+    

@@ -97,7 +97,7 @@ export default function HomePage() {
       <section className="py-16 bg-muted">
         <div className="container mx-auto px-4">
           <h2 className="text-3xl font-headline font-semibold text-center mb-10">Specializing In Top Enterprise Platforms</h2>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
             <Card className="text-center shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all">
               <CardHeader>
                 <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-card mb-4">
@@ -154,7 +154,7 @@ export default function HomePage() {
             We bridge the gap between elite platform talent and the companies that need them.
           </p>
         </div>
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="p-6 text-center">
             <Rocket className="h-12 w-12 text-primary mx-auto mb-4" />
             <h3 className="text-xl font-headline font-semibold mb-3">Direct Access</h3>
@@ -179,7 +179,7 @@ export default function HomePage() {
            <div className="text-center max-w-3xl mx-auto">
               <h2 className="text-3xl font-headline font-semibold mb-12">Simple, Fast, and Effective</h2>
            </div>
-           <div className="grid md:grid-cols-2 gap-10 items-center">
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
                 <div>
                     <h3 className="text-2xl font-headline font-semibold mb-6 text-primary">For Candidates</h3>
                     <ul className="space-y-6">
@@ -206,7 +206,7 @@ export default function HomePage() {
                         </li>
                     </ul>
                 </div>
-                 <div>
+                 <div className="mt-8 md:mt-0">
                     <Image 
                       src="https://img.freepik.com/free-photo/hiring-concept-with-empty-chair_23-2149519862.jpg?ga=GA1.1.307298436.1750762634&semt=ais_items_boosted&w=740"
                       alt="A professional candidate reviewing job opportunities on a laptop"
@@ -225,7 +225,7 @@ export default function HomePage() {
         <div className="text-center max-w-3xl mx-auto">
           <h2 className="text-3xl font-headline font-semibold mb-12">Trusted by Professionals and Recruiters</h2>
         </div>
-        <div className="grid lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <Card className="bg-card border-border shadow-lg">
             <CardContent className="p-8">
               <Quote className="h-8 w-8 text-primary mb-4" />
@@ -286,3 +286,5 @@ export default function HomePage() {
     </div>
   );
 }
+
+    

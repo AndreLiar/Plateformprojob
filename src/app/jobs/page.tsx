@@ -93,7 +93,7 @@ export default async function BrowseJobsPage() {
       <h1 className="text-4xl font-headline font-bold mb-10 text-center text-primary">
         Find Your Next Platform Engineering Role
       </h1>
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {jobs.map(job => (
           <JobListCard key={job.id} job={job} />
         ))}
@@ -101,3 +101,5 @@ export default async function BrowseJobsPage() {
     </div>
   );
 }
+
+    

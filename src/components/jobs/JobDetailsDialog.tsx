@@ -153,3 +153,5 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
     </Dialog>
   );
 }
+
+    

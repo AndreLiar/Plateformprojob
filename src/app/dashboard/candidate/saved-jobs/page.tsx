@@ -71,7 +71,7 @@ export default function SavedJobsPage() {
             </div>
             <CardDescription>Loading your saved jobs...</CardDescription>
           </CardHeader>
-          <CardContent className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3].map(i => (
               <div key={i} className="flex flex-col space-y-3">
                   <Skeleton className="h-[125px] w-full rounded-xl" />
@@ -112,7 +112,7 @@ export default function SavedJobsPage() {
               </Button>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {savedJobs.map(job => (
                 <JobListCard key={job.id} job={job} />
               ))}
@@ -123,3 +123,5 @@ export default function SavedJobsPage() {
     </div>
   );
 }
+
+    

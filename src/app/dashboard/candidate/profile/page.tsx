@@ -22,7 +22,7 @@ export default function CandidateProfilePage() {
         
         <section>
             <h3 className="text-xl font-semibold text-foreground mb-4 flex items-center gap-2"><UserCircle className="h-5 w-5 text-primary"/> Basic Information</h3>
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label htmlFor="fullName">Full Name</Label>
                 <Input id="fullName" placeholder="e.g., Jane Doe" defaultValue="Candidate Name" className="bg-muted/30"/>
@@ -116,3 +116,5 @@ export default function CandidateProfilePage() {
     </Card>
   );
 }
+
+    
