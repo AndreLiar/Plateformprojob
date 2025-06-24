@@ -1,23 +1,45 @@
 import type { Timestamp } from 'firebase/firestore';
 
+export interface WorkExperience {
+  id: string;
+  title: string;
+  company: string;
+  location?: string;
+  startDate: string;
+  endDate: string; 
+  isCurrent: boolean;
+  description?: string;
+}
+
+export interface Education {
+  id:string;
+  institution: string;
+  degree: string;
+  fieldOfStudy?: string;
+  startDate: string;
+  endDate: string;
+}
+
 export interface UserProfile {
   uid: string;
   email: string | null;
   displayName: string | null;
   role: 'recruiter' | 'candidate';
   createdAt: Timestamp;
-  freePostsRemaining?: number; // Optional for existing users, will be set for new ones
-  purchasedPostsRemaining?: number; // Optional for existing users
-  savedJobs?: string[]; // Array of saved job IDs
+  freePostsRemaining?: number;
+  purchasedPostsRemaining?: number;
+  savedJobs?: string[];
   
-  // Candidate specific fields
   phone?: string;
   linkedin?: string;
   headline?: string;
   summary?: string;
-  skills?: string; // Comma-separated string of skills
+  skills?: string;
   cvUrl?: string;
   cvPublicId?: string;
+
+  workExperience?: WorkExperience[];
+  education?: Education[];
 }
 
 export type ContractType = 'Full-time' | 'Part-time' | 'Contract';
