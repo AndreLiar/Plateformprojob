@@ -232,7 +232,7 @@ export default function HomePage() {
               <p className="text-muted-foreground mb-6 italic">"PlatformPro Jobs cut through the noise. We found a senior Salesforce architect in two weeks, a process that used to take months. The quality of candidates is unparalleled."</p>
               <div className="flex items-center">
                 <Avatar className="h-12 w-12 mr-4">
-                  <AvatarImage src="https://img.freepik.com/free-photo/inspiring-new-boss_1098-93.jpg?ga=GA1.1.307298436.1750762634&semt=ais_items_boosted&w=740" alt="Avatar of a recruiter" data-ai-hint="woman portrait" />
+                  <AvatarImage src="https://img.freepik.com/free-photo/portrait-business-woman-office_1398-6.jpg?ga=GA1.1.307298436.1750762634&semt=ais_items_boosted&w=740" alt="Avatar of a recruiter" data-ai-hint="woman portrait" />
                   <AvatarFallback>SR</AvatarFallback>
                 </Avatar>
                 <div>
@@ -248,7 +248,7 @@ export default function HomePage() {
               <p className="text-muted-foreground mb-6 italic">"As an SAP consultant, finding the right-fit roles was always a challenge. On PlatformPro, I found three relevant opportunities in my first search and landed my dream job."</p>
               <div className="flex items-center">
                 <Avatar className="h-12 w-12 mr-4">
-                  <AvatarImage src="https://placehold.co/100x100.png" alt="Avatar of a candidate" data-ai-hint="man portrait" />
+                  <AvatarImage src="https://img.freepik.com/free-photo/portrait-confident-young-businessman-with-his-arms-crossed_23-2148176206.jpg?ga=GA1.1.307298436.1750762634&semt=ais_items_boosted&w=740" alt="Avatar of a candidate" data-ai-hint="man portrait" />
                   <AvatarFallback>MJ</AvatarFallback>
                 </Avatar>
                 <div>

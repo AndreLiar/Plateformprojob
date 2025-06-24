@@ -4,11 +4,12 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { UserCircle, Search, Briefcase, FileText, Loader2 } from "lucide-react";
+import { UserCircle, Search, Briefcase, FileText, Loader2, UserCheck } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getCountFromServer } from "firebase/firestore";
+import { Progress } from "@/components/ui/progress";
 
 export default function CandidateDashboardPage() {
   const { user, loading: authLoading } = useAuth();
@@ -87,14 +88,21 @@ export default function CandidateDashboardPage() {
       <div className="grid md:grid-cols-2 gap-6">
         <Card className="shadow-md rounded-lg">
           <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2"><FileText className="text-primary h-5 w-5" />Profile Completion</CardTitle>
+            <CardTitle className="text-xl flex items-center gap-2">
+              <UserCheck className="text-primary h-5 w-5" /> Profile Strength
+            </CardTitle>
+            <CardDescription>A complete profile attracts more recruiters.</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground text-sm">
-              A complete and up-to-date profile significantly increases your chances of getting noticed by recruiters.
+            <div className="flex items-center gap-4 mb-2">
+              <Progress value={40} className="w-full" aria-label="Profile completion 40%" />
+              <span className="text-lg font-bold text-primary">40%</span>
+            </div>
+            <p className="text-muted-foreground text-xs mb-4">
+              Complete your headline, summary, and skills to improve your visibility.
             </p>
-            <Button variant="link" asChild className="px-0 text-primary">
-                <Link href="/dashboard/candidate/profile">Update Profile Now &rarr;</Link>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/dashboard/candidate/profile">Update Profile &rarr;</Link>
             </Button>
           </CardContent>
         </Card>
