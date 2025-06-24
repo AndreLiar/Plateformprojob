@@ -29,6 +29,12 @@ const nextConfig: NextConfig = {
         hostname: 'res.cloudinary.com', // Added for Cloudinary
         port: '',
         pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'img.freepik.com', // Added for landing page images
+        port: '',
+        pathname: '/**',
       }
     ],
   },

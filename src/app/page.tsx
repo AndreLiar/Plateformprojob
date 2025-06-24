@@ -208,7 +208,7 @@ export default function HomePage() {
                 </div>
                  <div>
                     <Image 
-                      src="https://placehold.co/600x400.png"
+                      src="https://img.freepik.com/free-photo/hiring-concept-with-empty-chair_23-2149519862.jpg?ga=GA1.1.307298436.1750762634&semt=ais_items_boosted&w=740"
                       alt="A professional candidate reviewing job opportunities on a laptop"
                       data-ai-hint="developer job search"
                       width={600}
@@ -232,7 +232,7 @@ export default function HomePage() {
               <p className="text-muted-foreground mb-6 italic">"PlatformPro Jobs cut through the noise. We found a senior Salesforce architect in two weeks, a process that used to take months. The quality of candidates is unparalleled."</p>
               <div className="flex items-center">
                 <Avatar className="h-12 w-12 mr-4">
-                  <AvatarImage src="https://placehold.co/100x100.png" alt="Avatar of a recruiter" data-ai-hint="woman portrait" />
+                  <AvatarImage src="https://img.freepik.com/free-photo/inspiring-new-boss_1098-93.jpg?ga=GA1.1.307298436.1750762634&semt=ais_items_boosted&w=740" alt="Avatar of a recruiter" data-ai-hint="woman portrait" />
                   <AvatarFallback>SR</AvatarFallback>
                 </Avatar>
                 <div>
