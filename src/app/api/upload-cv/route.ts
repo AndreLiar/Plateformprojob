@@ -2,13 +2,10 @@
 // src/app/api/upload-cv/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import { uploadStreamToCloudinary } from '@/lib/cloudinary';
-import pdf from 'pdf-parse';
 
 export async function POST(request: NextRequest) {
   let cvUrl: string | null = null;
   let cvPublicId: string | null = null;
-  let extractedText: string | null = null;
-  let extractionError: string | null = null;
 
   try {
     const formData = await request.formData();
@@ -17,7 +14,6 @@ export async function POST(request: NextRequest) {
     if (!file) {
       return NextResponse.json({ 
         success: false, error: 'No file provided.', 
-        extractedText: null, extractionError: 'No file provided for processing.', 
         url: null, publicId: null 
       }, { status: 400 });
     }
@@ -25,7 +21,6 @@ export async function POST(request: NextRequest) {
     if (file.size > 5 * 1024 * 1024) { // 5MB limit
       return NextResponse.json({ 
         success: false, error: 'File is too large. Max 5MB.', 
-        extractedText: null, extractionError: 'File too large.', 
         url: null, publicId: null 
       }, { status: 400 });
     }
@@ -37,26 +32,12 @@ export async function POST(request: NextRequest) {
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json({ 
         success: false, error: 'Invalid file type. Only PDF, DOC, DOCX allowed.', 
-        extractedText: null, extractionError: 'Invalid file type.', 
         url: null, publicId: null 
       }, { status: 400 });
     }
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-
-    // --- Text Extraction Logic (PDF only for now) ---
-    if (file.type === 'application/pdf') {
-      try {
-        const data = await pdf(buffer);
-        extractedText = data.text;
-      } catch (err: any) {
-        console.error("PDF parsing error in API route:", err);
-        extractionError = `Failed to extract text from PDF: ${err.message || "Unknown parsing error"}. Application will proceed without AI analysis.`;
-      }
-    } else {
-      extractionError = "Text extraction is currently only supported for PDF files. Application will proceed without AI analysis.";
-    }
 
     // --- Cloudinary Upload ---
     const originalFilename = file.name.split('.').slice(0, -1).join('.') || `cv_${Date.now()}`;
@@ -73,8 +54,6 @@ export async function POST(request: NextRequest) {
         success: true,
         url: cvUrl,
         publicId: cvPublicId,
-        extractedText: extractedText, 
-        extractionError: extractionError,
       });
     } else {
       const cloudinaryErrorMessage = (cloudinaryResult as any)?.error?.message || 'Cloudinary upload failed.';
@@ -82,8 +61,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         error: `Cloudinary upload failed: ${cloudinaryErrorMessage}.`,
-        extractedText,
-        extractionError,
         url: null,
         publicId: null,
       }, { status: 500 });
@@ -115,8 +92,6 @@ export async function POST(request: NextRequest) {
       { 
         success: false, 
         error: clientMessage,
-        extractedText: null, 
-        extractionError: "CV processing encountered a critical server error.",
         url: cvUrl, 
         publicId: cvPublicId,
         _dev_error_details: messageForDev 

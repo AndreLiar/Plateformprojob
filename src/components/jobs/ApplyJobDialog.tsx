@@ -79,8 +79,7 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
 
     let cvUrl: string | null = null;
     let cloudinaryPublicId: string | null = null;
-    let cvUploadResult: any = null;
-
+    
     try {
       setSubmissionStatus('Uploading CV...');
       const formData = new FormData();
@@ -91,7 +90,7 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         body: formData,
       });
 
-      cvUploadResult = await uploadResponse.json();
+      const cvUploadResult = await uploadResponse.json();
 
       if (uploadResponse.ok && cvUploadResult.success && cvUploadResult.url) {
         cvUrl = cvUploadResult.url;
@@ -110,42 +109,36 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
     }
     
     let aiAnalysisResult: AnalyzeCvOutput | null = null;
-    // Only run analysis if text was successfully extracted
-    if (cvUploadResult?.extractedText) {
-        setSubmissionStatus('Performing AI analysis...');
-        try {
-            const fileBuffer = await cvFile.arrayBuffer();
-            const base64String = Buffer.from(fileBuffer).toString('base64');
-            const dataUri = `data:${cvFile.type};base64,${base64String}`;
-            
-            const analysisInput: AnalyzeCvInput = {
-                cvDataUri: dataUri,
-                cvTextContent: cvUploadResult.extractedText,
-                jobTitle: job.title,
-                jobDescription: job.description,
-                jobTechnologies: job.technologies,
-                jobExperienceLevel: job.experienceLevel,
-            };
-            aiAnalysisResult = await analyzeCvAgainstJob(analysisInput);
-            
-            if (aiAnalysisResult.score > 0) {
-              toast({ title: "AI Analysis Complete", description: `CV scored ${aiAnalysisResult.score}/100.` });
-            } else {
-              // Show the summary from the flow which often contains the reason for a 0 score.
-              toast({ variant: "default", title: "AI Analysis Note", description: aiAnalysisResult.summary, duration: 8000 });
-            }
-
-        } catch (aiError: any) {
-            console.error("Error calling AI analysis flow:", aiError);
-            toast({
-                variant: "destructive",
-                title: "AI Analysis Failed",
-                description: "Could not perform AI analysis, but the application will still be submitted."
-            });
+    setSubmissionStatus('Performing AI analysis...');
+    try {
+        const fileBuffer = await cvFile.arrayBuffer();
+        const base64String = Buffer.from(fileBuffer).toString('base64');
+        const dataUri = `data:${cvFile.type};base64,${base64String}`;
+        
+        const analysisInput: AnalyzeCvInput = {
+            cvDataUri: dataUri,
+            // cvTextContent is now omitted; the AI will process the file directly.
+            jobTitle: job.title,
+            jobDescription: job.description,
+            jobTechnologies: job.technologies,
+            jobExperienceLevel: job.experienceLevel,
+        };
+        aiAnalysisResult = await analyzeCvAgainstJob(analysisInput);
+        
+        if (aiAnalysisResult.score > 0) {
+          toast({ title: "AI Analysis Complete", description: `CV scored ${aiAnalysisResult.score}/100.` });
+        } else {
+          // Show the summary from the flow which often contains the reason for a 0 score.
+          toast({ variant: "default", title: "AI Analysis Note", description: aiAnalysisResult.summary, duration: 8000 });
         }
-    } else if (cvUploadResult?.extractionError) {
-        // Inform user if extraction failed but upload succeeded
-        toast({ title: "AI Analysis Skipped", description: cvUploadResult.extractionError, duration: 8000 });
+
+    } catch (aiError: any) {
+        console.error("Error calling AI analysis flow:", aiError);
+        toast({
+            variant: "destructive",
+            title: "AI Analysis Failed",
+            description: "Could not perform AI analysis, but the application will still be submitted."
+        });
     }
 
     if (cvUrl) {
@@ -182,7 +175,7 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         appliedAt: serverTimestamp(),
         status: 'Applied' as const,
         aiScore: aiAnalysisResult?.score ?? null,
-        aiAnalysisSummary: aiAnalysisResult?.summary ?? (cvUploadResult?.extractionError || "AI analysis was not performed."),
+        aiAnalysisSummary: aiAnalysisResult?.summary ?? "AI analysis was not performed.",
         aiStrengths: aiAnalysisResult?.strengths ?? [],
         aiWeaknesses: aiAnalysisResult?.weaknesses ?? [],
       };
@@ -234,7 +227,7 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         <DialogHeader>
           <DialogTitle className="font-headline text-2xl text-primary">Apply for: {job.title}</DialogTitle>
           <DialogDescription>
-            Upload your CV to apply. Supported: PDF, DOC, DOCX (Max 5MB). AI analysis is only available for PDFs.
+            Upload your CV to apply. Supported: PDF, DOC, DOCX (Max 5MB). The AI will analyze the file content.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6 py-4">
