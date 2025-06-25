@@ -1,7 +1,7 @@
 
-import { collection, getDocs, orderBy, query, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query, Timestamp, doc, where, documentId } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Job } from '@/lib/types'; 
+import type { Job, UserProfile } from '@/lib/types'; 
 import JobListCard from '@/components/dashboard/JobListCard'; 
 import { Briefcase } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,32 +24,69 @@ async function getJobs(): Promise<SerializedJob[]> {
     const jobsCollection = collection(db, 'jobs');
     const q = query(jobsCollection, orderBy('createdAt', 'desc'));
     const querySnapshot = await getDocs(q);
-    const jobs: SerializedJob[] = querySnapshot.docs.map(doc => {
-      const data = doc.data() as Job; 
+
+    const jobsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Job) }));
+
+    const jobsMissingCompanyInfo = jobsData.filter(job => !job.companyName);
+    const recruiterIdsToFetch = [...new Set(jobsMissingCompanyInfo.map(job => job.recruiterId))];
+
+    const recruiterProfilesMap = new Map<string, UserProfile>();
+
+    if (recruiterIdsToFetch.length > 0) {
+      // Note: Firestore 'in' query is limited to 30 items. For larger scale, this would need chunking.
+      const usersRef = collection(db, 'users');
+      // Chunking the array to handle more than 30 IDs if necessary
+      const MAX_IN_CLAUSE_SIZE = 30;
+      for (let i = 0; i < recruiterIdsToFetch.length; i += MAX_IN_CLAUSE_SIZE) {
+          const chunk = recruiterIdsToFetch.slice(i, i + MAX_IN_CLAUSE_SIZE);
+          const usersQuery = query(usersRef, where(documentId(), 'in', chunk));
+          const usersSnapshot = await getDocs(usersQuery);
+          usersSnapshot.forEach(doc => {
+            recruiterProfilesMap.set(doc.id, doc.data() as UserProfile);
+          });
+      }
+    }
+
+    const jobs: SerializedJob[] = jobsData.map(job => {
+      let companyName = job.companyName;
+      let companyLogoUrl = job.companyLogoUrl;
+      let companyDescription = job.companyDescription;
+      let companyWebsite = job.companyWebsite;
+
+      if (!companyName && recruiterProfilesMap.has(job.recruiterId)) {
+        const recruiterProfile = recruiterProfilesMap.get(job.recruiterId);
+        companyName = recruiterProfile?.companyName;
+        companyLogoUrl = recruiterProfile?.companyLogoUrl;
+        companyDescription = recruiterProfile?.companyDescription;
+        companyWebsite = recruiterProfile?.companyWebsite;
+      }
+
       return {
-        id: doc.id,
-        title: data.title,
-        description: data.description,
-        platform: data.platform, 
-        technologies: data.technologies, 
-        modules: data.modules || "",
-        location: data.location,
-        contractType: data.contractType,
-        experienceLevel: data.experienceLevel,
-        recruiterId: data.recruiterId,
-        companyName: data.companyName || '',
-        companyLogoUrl: data.companyLogoUrl || '',
-        companyDescription: data.companyDescription || '',
-        companyWebsite: data.companyWebsite || '',
-        applicationCount: data.applicationCount ?? 0,
-        createdAt: (data.createdAt as Timestamp).toDate().toISOString(),
-        updatedAt: (data.updatedAt as Timestamp).toDate().toISOString(),
+        id: job.id,
+        title: job.title,
+        description: job.description,
+        platform: job.platform,
+        technologies: job.technologies,
+        modules: job.modules || "",
+        location: job.location,
+        contractType: job.contractType,
+        experienceLevel: job.experienceLevel,
+        recruiterId: job.recruiterId,
+        applicationCount: job.applicationCount ?? 0,
+        createdAt: (job.createdAt as Timestamp).toDate().toISOString(),
+        updatedAt: (job.updatedAt as Timestamp).toDate().toISOString(),
+        // Use the enriched data
+        companyName: companyName || '',
+        companyLogoUrl: companyLogoUrl || '',
+        companyDescription: companyDescription || '',
+        companyWebsite: companyWebsite || '',
       };
     });
+
     return jobs;
   } catch (error) {
     console.error("Error fetching jobs for public listing: ", error);
-    return []; 
+    return [];
   }
 }
 

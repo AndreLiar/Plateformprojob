@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Job as OriginalJobType, Timestamp } from '@/lib/types';
@@ -149,7 +150,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
         aiAnalysisSummary: "AI analysis not available for one-click apply.",
         aiStrengths: [],
         aiWeaknesses: [],
-        companyName: job.companyName || 'A Company',
+        companyName: job.companyName || '',
         companyLogoUrl: job.companyLogoUrl || '',
       };
 
@@ -190,7 +191,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
               {job.companyLogoUrl ? (
                 <Avatar>
                   <AvatarImage src={job.companyLogoUrl} alt={`${job.companyName} logo`} className="object-contain" />
-                  <AvatarFallback>{job.companyName?.charAt(0)}</AvatarFallback>
+                  <AvatarFallback>{job.companyName?.charAt(0) || 'C'}</AvatarFallback>
                 </Avatar>
               ) : (
                 <Avatar>
@@ -199,7 +200,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
               )}
               <div>
                 <CardTitle className="text-xl font-headline text-primary">{job.title}</CardTitle>
-                <CardDescription className="text-sm font-medium text-muted-foreground">{job.companyName || "A Company"}</CardDescription>
+                <CardDescription className="text-sm font-medium text-muted-foreground">{job.companyName || "Company Not Available"}</CardDescription>
               </div>
           </div>
           <p className="text-xs text-muted-foreground pt-2">Posted {postedDate}</p>

@@ -116,6 +116,7 @@ export default function JobPostForm() {
   const [locationSearch, setLocationSearch] = useState('');
   const [filteredLocations, setFilteredLocations] = useState<string[]>([]);
   const [locationFuse, setLocationFuse] = useState<Fuse<string> | null>(null);
+  const [isLocationPopoverOpen, setIsLocationPopoverOpen] = useState(false);
 
   useEffect(() => {
     const uniqueInitialLocations = Array.from(new Set([...alwaysShownLocations, ...locationsListFromJson]));
@@ -259,7 +260,7 @@ export default function JobPostForm() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         applicationCount: 0,
-        companyName: userProfile.companyName || 'A Company',
+        companyName: userProfile.companyName || '',
         companyWebsite: userProfile.companyWebsite || '',
         companyDescription: userProfile.companyDescription || '',
         companyLogoUrl: userProfile.companyLogoUrl || '',
@@ -295,11 +296,92 @@ export default function JobPostForm() {
   }
 
   const handlePurchase = async () => {
-    // ... (same as before)
+    if (!clientSideStripePublishableKeyPresent || !STRIPE_JOB_POST_PRICE_ID || !user) {
+      toast({
+        variant: "destructive",
+        title: "Purchase Error",
+        description: "Stripe is not configured correctly or you are not logged in.",
+      });
+      return;
+    }
+
+    setIsPurchasing(true);
+    try {
+      const response = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId: user.uid, priceId: STRIPE_JOB_POST_PRICE_ID }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create Stripe session.');
+      }
+
+      const { sessionId } = await response.json();
+      const stripe = await getStripe();
+      if (!stripe) {
+        throw new Error('Stripe.js failed to load.');
+      }
+      
+      const { error } = await stripe.redirectToCheckout({ sessionId });
+      if (error) {
+        throw error;
+      }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Stripe Purchase Failed",
+        description: error.message || "An unexpected error occurred.",
+      });
+    } finally {
+      setIsPurchasing(false);
+    }
   };
 
   const handleGenerateAIDescription = async () => {
-    // ... (same as before)
+    const { jobTitle, platform, technologies, modules, experienceLevel, location, keyResponsibilitiesSummary, companyCultureSnippet, contractType } = form.getValues();
+    if (!keyResponsibilitiesSummary) {
+      toast({
+        variant: "destructive",
+        title: "Input Required",
+        description: "Please fill in the 'Key Responsibilities Summary' to use AI generation.",
+      });
+      return;
+    }
+    
+    setIsGeneratingAIDescription(true);
+    try {
+      const input: GenerateJobDescriptionInput = {
+        jobTitle,
+        platform,
+        technologies,
+        modules,
+        experienceLevel,
+        location,
+        keyResponsibilitiesSummary,
+        companyCultureSnippet,
+        contractType,
+      };
+
+      const result = await generateJobDescription(input);
+      if (result.generatedDescription && !result.generatedDescription.startsWith("Error:")) {
+        form.setValue('description', result.generatedDescription, { shouldValidate: true });
+        toast({ title: "Description Generated!", description: "The job description has been filled in by AI." });
+      } else {
+        throw new Error(result.generatedDescription || "AI generation failed to produce content.");
+      }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "AI Generation Failed",
+        description: error.message || "An unexpected error occurred.",
+      });
+    } finally {
+      setIsGeneratingAIDescription(false);
+    }
   };
 
   if (authLoading && !userProfile && !searchParams.get('session_id')) { 
