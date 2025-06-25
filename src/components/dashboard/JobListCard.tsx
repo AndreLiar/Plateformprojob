@@ -11,7 +11,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, useCallback } from 'react';
 import ApplyJobDialog from '@/components/jobs/ApplyJobDialog';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, limit, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, doc, updateDoc, arrayUnion, arrayRemove } from 'firestore';
 import ViewApplicantsDialog from '@/components/dashboard/recruiter/ViewApplicantsDialog';
 import JobDetailsDialog from '@/components/jobs/JobDetailsDialog';
 import { useToast } from "@/hooks/use-toast";
@@ -237,17 +237,25 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
                 <Button variant="ghost" size="sm" disabled className="text-green-600">
                   <CheckCircle className="mr-2 h-4 w-4" /> Applied
                 </Button>
-              ) : isQuickApplying ? (
-                 <Button variant="default" size="sm" disabled className="bg-accent/80">
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Applying...
+              ) : canQuickApply ? (
+                <Button 
+                    variant="default" 
+                    size="sm" 
+                    onClick={handleOneClickApply} 
+                    disabled={isQuickApplying}
+                    className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                    title="Apply instantly using your saved CV"
+                >
+                    {isQuickApplying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
+                    {isQuickApplying ? 'Applying...' : 'Quick Apply'}
                 </Button>
               ) : (
                 <Button 
                     variant="default" 
                     size="sm" 
-                    onClick={canQuickApply ? handleOneClickApply : () => setIsApplyDialogOpen(true)} 
+                    onClick={() => setIsApplyDialogOpen(true)} 
                     className="bg-accent hover:bg-accent/90 text-accent-foreground"
-                    title={canQuickApply ? "Apply using your saved CV" : "Upload new CV and apply"}
+                    title="Upload a CV and apply"
                 >
                     <Send className="mr-2 h-4 w-4" /> Apply Now
                 </Button>
