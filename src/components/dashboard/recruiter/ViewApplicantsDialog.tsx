@@ -16,7 +16,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, ExternalLink, UserX, FileText, AlertTriangle, Sparkles, Info, FileQuestion } from 'lucide-react';
+import { Loader2, ExternalLink, UserX, FileText, AlertTriangle, Sparkles, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -25,8 +25,6 @@ import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/hooks/useAuth';
-import { generateInterviewQuestions, type InterviewQuestionGeneratorInput, type InterviewQuestionGeneratorOutput } from '@/ai/flows/interview-question-generator';
-import InterviewQuestionsDialog from './InterviewQuestionsDialog';
 
 
 interface JobForDialog extends Omit<OriginalJobType, 'createdAt' | 'updatedAt'> {
@@ -49,12 +47,6 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
   const [loading, setLoading] = useState(false);
   const [missingIndexError, setMissingIndexError] = useState(false);
   const { toast } = useToast();
-  
-  // State for Interview Questions feature
-  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState<string | null>(null); // Store applicant ID
-  const [isQuestionsDialogOpen, setIsQuestionsDialogOpen] = useState(false);
-  const [generatedQuestions, setGeneratedQuestions] = useState<InterviewQuestionGeneratorOutput | null>(null);
-  const [selectedCandidate, setSelectedCandidate] = useState<{name: string, jobTitle: string} | null>(null);
 
   const fetchApplications = useCallback(async () => {
     if (!job?.id) return;
@@ -128,33 +120,6 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
     }
   };
 
-  const handleGenerateQuestions = async (app: Application) => {
-    if (!app.id) return;
-    setIsGeneratingQuestions(app.id);
-    try {
-      const input: InterviewQuestionGeneratorInput = {
-        jobTitle: job.title,
-        jobDescription: job.description,
-        candidateStrengths: app.aiStrengths || [],
-        candidateWeaknesses: app.aiWeaknesses || [],
-      };
-      
-      const result = await generateInterviewQuestions(input);
-      setGeneratedQuestions(result);
-      setSelectedCandidate({ name: app.candidateName || 'Candidate', jobTitle: job.title });
-      setIsQuestionsDialogOpen(true);
-
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Generation Failed",
-        description: "Could not generate interview questions. " + error.message,
-      });
-    } finally {
-      setIsGeneratingQuestions(null);
-    }
-  };
-
   const getScoreBadgeVariant = (score: number | null | undefined): "default" | "secondary" | "destructive" | "outline" => {
     if (score === null || score === undefined) return "outline";
     if (score > 75) return "default";
@@ -206,8 +171,8 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
                   <Table className="min-w-full">
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[18%]">Candidate</TableHead>
-                        <TableHead className="w-[8%] text-center">
+                        <TableHead className="w-[20%]">Candidate</TableHead>
+                        <TableHead className="w-[10%] text-center">
                            <div className="flex items-center justify-center gap-1">
                               <Sparkles className="h-3 w-3 text-primary opacity-70" />
                               AI Score
@@ -217,10 +182,10 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
                               </Tooltip>
                            </div>
                         </TableHead>
-                        <TableHead className="w-[25%]">AI Summary</TableHead>
+                        <TableHead className="w-[30%]">AI Summary</TableHead>
                         <TableHead className="w-[15%]">Status</TableHead>
-                        <TableHead className="w-[17%]">Applied On</TableHead>
-                        <TableHead className="w-[17%] text-right">Actions</TableHead>
+                        <TableHead className="w-[15%]">Applied On</TableHead>
+                        <TableHead className="w-[10%] text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -266,15 +231,6 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
                             {app.appliedAt?.toDate ? format(app.appliedAt.toDate(), 'PPp') : 'N/A'}
                           </TableCell>
                           <TableCell className="text-right py-3 whitespace-nowrap space-x-2">
-                             <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleGenerateQuestions(app)}
-                              disabled={isGeneratingQuestions === app.id || !app.aiAnalysisSummary || (app.aiScore === 0)}
-                            >
-                              {isGeneratingQuestions === app.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileQuestion className="mr-2 h-4 w-4" />}
-                              Questions
-                            </Button>
                             <Button
                               variant="outline"
                               size="sm"
@@ -301,16 +257,6 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      
-      {selectedCandidate && (
-        <InterviewQuestionsDialog
-          open={isQuestionsDialogOpen}
-          onOpenChange={setIsQuestionsDialogOpen}
-          questions={generatedQuestions}
-          candidateName={selectedCandidate.name}
-          jobTitle={selectedCandidate.jobTitle}
-        />
-      )}
     </>
   );
 }
