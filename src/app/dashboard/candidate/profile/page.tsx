@@ -79,7 +79,24 @@ export default function CandidateProfilePage() {
   }, [userProfile, form]);
   
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    // ... (same as before)
+    setCvUploadError(null);
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        setCvUploadError('File is too large. Max 5MB.');
+        return;
+      }
+      const allowedTypes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ];
+      if (!allowedTypes.includes(file.type)) {
+        setCvUploadError('Invalid file type. Only PDF, DOC, or DOCX are allowed.');
+        return;
+      }
+      setNewCvFile(file);
+    }
   };
 
   const handleSkillKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -153,10 +170,33 @@ export default function CandidateProfilePage() {
     }
 
     setIsSaving(true);
-    let cvData: { cvUrl?: string; cvPublicId?: string } = {};
+    let cvData: { cvUrl?: string; cvPublicId?: string; cvMimeType?: string; } = {};
 
     if (newCvFile) {
-      // ... CV upload logic (same as before)
+      if (cvUploadError) {
+        toast({ variant: "destructive", title: "CV Error", description: cvUploadError });
+        setIsSaving(false);
+        return;
+      }
+      try {
+        const formData = new FormData();
+        formData.append('cv', newCvFile);
+        const response = await fetch('/api/upload-cv', {
+            method: 'POST',
+            body: formData,
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'CV upload failed.');
+        }
+        cvData.cvUrl = result.url;
+        cvData.cvPublicId = result.publicId;
+        cvData.cvMimeType = newCvFile.type;
+      } catch (error: any) {
+          toast({ variant: "destructive", title: "Upload Failed", description: error.message });
+          setIsSaving(false);
+          return;
+      }
     }
 
     try {
@@ -172,6 +212,7 @@ export default function CandidateProfilePage() {
       
       await refreshUserProfile();
       setNewCvFile(null);
+      setCvUploadError(null);
       toast({ title: "Profile Saved!", description: "Your information has been updated." });
 
     } catch (error: any) {
@@ -276,6 +317,46 @@ export default function CandidateProfilePage() {
                    <FormDescription className="pt-2">List your technical skills, tools, and specializations. Press Enter or comma to add a skill.</FormDescription>
               </section>
               
+              <section>
+                <h3 className="text-xl font-semibold text-foreground mb-4 flex items-center gap-2"><FileText className="h-5 w-5 text-primary"/> Curriculum Vitae (CV)</h3>
+                <div className="p-4 border rounded-md bg-muted/20 space-y-4">
+                  {userProfile?.cvUrl && !newCvFile && (
+                    <div className="text-sm">
+                      <p className="font-medium text-foreground">Current CV on file:</p>
+                      <Button variant="link" asChild className="p-0 h-auto">
+                        <a href={userProfile.cvUrl} target="_blank" rel="noopener noreferrer">
+                          View Current CV <ExternalLink className="ml-1 h-3 w-3" />
+                        </a>
+                      </Button>
+                    </div>
+                  )}
+                  <div>
+                    <Label htmlFor="cv-upload">{userProfile?.cvUrl ? 'Upload a new CV to replace the old one' : 'Upload your CV'}</Label>
+                    <div className="relative mt-2 flex items-center justify-center w-full">
+                      <label htmlFor="cv-upload" className="flex flex-col items-center justify-center w-full h-32 border-2 border-border border-dashed rounded-lg cursor-pointer bg-card hover:bg-muted/50 transition-colors">
+                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                          <UploadCloud className="w-8 h-8 mb-3 text-muted-foreground" />
+                          <p className="mb-2 text-sm text-muted-foreground">
+                            <span className="font-semibold">Click to upload</span> or drag and drop
+                          </p>
+                          <p className="text-xs text-muted-foreground">PDF, DOC, DOCX (MAX. 5MB)</p>
+                        </div>
+                        <Input
+                          id="cv-upload"
+                          type="file"
+                          className="hidden"
+                          onChange={handleFileChange}
+                          accept=".pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        />
+                      </label>
+                    </div>
+                    {newCvFile && <p className="text-sm text-green-600 mt-2">Selected: {newCvFile.name}</p>}
+                    {cvUploadError && <p className="text-sm text-destructive mt-2">{cvUploadError}</p>}
+                  </div>
+                </div>
+                <FormDescription className="pt-2">Your CV will be used for one-click applications and shared with recruiters.</FormDescription>
+              </section>
+
               <section>
                   <h3 className="text-xl font-semibold text-foreground mb-4 flex items-center gap-2"><Briefcase className="h-5 w-5 text-primary"/> Work Experience</h3>
                   <div className="space-y-4">
