@@ -17,8 +17,12 @@ PlatformPro Jobs is a specialized job board built with Next.js, Firebase, and Ge
 - **Authentication**: Sign up and log in as a Recruiter.
 - **Dashboard**:
     - **Post New Jobs**: A form to create and publish job listings, with fields for title, platform (Salesforce, SAP, Oracle, HubSpot), technologies, modules, location, contract type, experience level, and description.
-    - **My Job Postings**: View, manage, and see a list of jobs posted by the recruiter.
-    - **View Applicants**: For each job, recruiters can view a list of candidates who have applied, including their name, email, application date, and a link to download their CV.
+    - **My Job Postings**: View and manage jobs posted by the recruiter.
+    - **View Applicants**: For each job, recruiters can view a list of candidates who have applied.
+- **AI-Powered Candidate Scoring & Sorting**:
+    - Candidates are automatically scored and sorted based on how well their CV matches the job description.
+    - Recruiters see a concise AI-generated summary for each candidate, highlighting their fit.
+- **Application Status Management**: Recruiters can update the status of each application (e.g., "Under Review", "Interviewing", "Rejected"), which is reflected on the candidate's dashboard.
 - **Stripe Integration**:
     - Recruiters receive initial free job posts.
     - Ability to purchase additional job post credits via Stripe Checkout.
@@ -27,20 +31,23 @@ PlatformPro Jobs is a specialized job board built with Next.js, Firebase, and Ge
 
 ### Candidate Features:
 - **Authentication**: Sign up and log in as a Candidate.
+- **Comprehensive Profile Management**:
+    - Build a detailed professional profile including a headline, summary, and contact information.
+    - Add skills using an interactive tag system.
+    - List detailed work experience and education history.
 - **Dashboard**:
-    - **My Profile**: (Placeholder) View and edit profile information.
-    - **Applied Jobs**: View a list of jobs they have applied for and their current status.
+    - **Profile Strength Indicator**: A visual guide that encourages candidates to complete their profile for better visibility.
+    - **Applied Jobs**: View a list of jobs they have applied for and track their real-time application status as updated by recruiters.
+    - **Saved Jobs**: Bookmark interesting jobs to apply for later.
 - **Job Application**:
     - Browse all open job listings.
     - View detailed job descriptions.
-    - Apply for jobs by uploading a CV (PDF, DOC, DOCX). CVs are stored in Cloudinary.
+    - **One-Click Apply**: Candidates with a completed profile and a saved CV can apply for jobs instantly.
+    - Standard application process with CV upload for new users. CVs are stored in Cloudinary.
 
 ### General Features:
-- **Public Job Listings**: A page accessible to everyone, displaying all active job postings with filtering and search capabilities (to be enhanced).
+- **Public Job Listings**: A page accessible to everyone, displaying all active job postings.
 - **CV Management**: CVs uploaded by candidates are stored in Cloudinary, and recruiters can download them.
-- **AI-Powered CV Analysis (Currently Simplified/Deferred)**:
-    - The backend infrastructure using Genkit is in place to analyze CV content against job descriptions.
-    - Features like AI score and detailed analysis summary are currently displayed as "Coming Soon" or "N/A" in the UI to ensure platform stability while these are being refined. Text extraction from CVs is also temporarily simplified.
 
 ## Project Structure
 
@@ -48,10 +55,10 @@ PlatformPro Jobs is a specialized job board built with Next.js, Firebase, and Ge
     - `(auth)`: Route group for authentication pages (login, signup).
     - `dashboard/`: Layout and pages for recruiter dashboard.
     - `dashboard/candidate/`: Layout and pages for candidate dashboard.
-    - `api/`: API routes (e.g., Stripe webhooks, CV upload).
+    - `api/`: API routes (e.g., Stripe webhooks, CV upload, status updates).
 - `src/components/`: Reusable UI components.
     - `auth/`: Authentication-related components.
-    - `dashboard/`: Components specific to dashboards.
+    - `dashboard/`: Components specific to dashboards (for both recruiters and candidates).
     - `jobs/`: Components related to job listings and applications.
     - `layout/`: Header, Footer components.
     - `ui/`: ShadCN UI components.
@@ -153,13 +160,5 @@ You need to run two separate development servers: one for the Next.js frontend a
 - Create a product (e.g., "Job Post Credit") and a one-time price for it. Note the Price ID.
 - Get your Publishable Key and Secret Key.
 - Set up a webhook endpoint in Stripe to listen for `checkout.session.completed` events. The URL will typically be `http://localhost:<your_nextjs_port>/api/stripe/webhook` during local development (you might need to use a tool like `ngrok` or the Stripe CLI to expose your local webhook endpoint to Stripe). Note the Webhook Signing Secret.
-
-## Current Development Status
-- The core application structure for recruiters and candidates is functional.
-- CV upload to Cloudinary and job application submission are working.
-- Stripe integration for purchasing job posts is implemented.
-- **AI Features (Job Description Generation & CV Analysis)**:
-    - Job Description Generation is available.
-    - CV Analysis is integrated but its UI presentation is simplified (showing "Coming Soon" or "N/A") due to ongoing refinement and to ensure platform stability. The text extraction process from CVs in the backend has also been temporarily simplified.
 
 This README should give a good overview of the project and how to get it running!
