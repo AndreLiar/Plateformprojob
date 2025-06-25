@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { Job as OriginalJobType, Timestamp } from '@/lib/types';
+import type { Job as OriginalJobType, Timestamp, UserProfile } from '@/lib/types';
 import {
   Dialog,
   DialogContent,
@@ -14,11 +14,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Briefcase, MapPin, Zap, Settings2, Layers, Clock, FileText, Link as LinkIcon, Building } from 'lucide-react';
+import { Briefcase, MapPin, Zap, Settings2, Clock, FileText, Link as LinkIcon, Building } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
-import { Separator } from '@/components/ui/separator';
 import Image from 'next/image';
 import Link from 'next/link';
+import { db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { useState, useEffect } from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
+
 
 interface JobForDialog extends Omit<OriginalJobType, 'createdAt' | 'updatedAt' | 'id'> {
   id?: string;
@@ -34,7 +38,66 @@ interface JobDetailsDialogProps {
   isCandidateView?: boolean;
 }
 
+interface CompanyInfo {
+    name?: string;
+    website?: string;
+    description?: string;
+    logoUrl?: string;
+}
+
+
 export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isCandidateView }: JobDetailsDialogProps) {
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
+  const [isLoadingCompanyInfo, setIsLoadingCompanyInfo] = useState(false);
+
+  useEffect(() => {
+    const fetchCompanyInfoForLegacyJobs = async () => {
+        if (!job || !job.recruiterId) return;
+
+        // If company info is already denormalized on the job object, use it directly.
+        if (job.companyName) {
+            setCompanyInfo({
+                name: job.companyName,
+                website: job.companyWebsite,
+                description: job.companyDescription,
+                logoUrl: job.companyLogoUrl,
+            });
+            return;
+        }
+
+        // Otherwise, fetch it from the recruiter's user profile (for legacy jobs).
+        setIsLoadingCompanyInfo(true);
+        try {
+            const userDocRef = doc(db, 'users', job.recruiterId);
+            const userDocSnap = await getDoc(userDocRef);
+            if (userDocSnap.exists()) {
+                const recruiterProfile = userDocSnap.data() as UserProfile;
+                setCompanyInfo({
+                    name: recruiterProfile.companyName,
+                    website: recruiterProfile.companyWebsite,
+                    description: recruiterProfile.companyDescription,
+                    logoUrl: recruiterProfile.companyLogoUrl,
+                });
+            }
+        } catch (error) {
+            console.error("Error fetching legacy company info:", error);
+            setCompanyInfo(null);
+        } finally {
+            setIsLoadingCompanyInfo(false);
+        }
+    };
+
+    if (open && job) {
+        fetchCompanyInfoForLegacyJobs();
+    }
+    
+    // Reset when dialog closes
+    if (!open) {
+        setCompanyInfo(null);
+        setIsLoadingCompanyInfo(false);
+    }
+  }, [open, job]);
+
   if (!job) {
     return null;
   }
@@ -61,6 +124,8 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
   const modules = (job.modules && typeof job.modules === 'string')
     ? job.modules.split(',').map(mod => mod.trim()).filter(mod => mod)
     : [];
+    
+  const hasCompanyInfo = companyInfo && companyInfo.name;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -76,25 +141,39 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
           <div className="p-6 space-y-6">
             
             {/* Company Info Section */}
-            {job.companyName && (
+            {isLoadingCompanyInfo && (
+              <div className="p-4 rounded-lg bg-muted/30 border space-y-3">
+                  <Skeleton className="h-5 w-1/3" />
+                  <div className="flex items-start gap-4">
+                      <Skeleton className="w-20 h-20 rounded-md shrink-0" />
+                      <div className="flex-grow space-y-2">
+                          <Skeleton className="h-6 w-1/2" />
+                          <Skeleton className="h-4 w-1/4" />
+                          <Skeleton className="h-12 w-full" />
+                      </div>
+                  </div>
+              </div>
+            )}
+
+            {hasCompanyInfo && (
               <div className="p-4 rounded-lg bg-muted/30 border">
                  <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2"><Building className="h-5 w-5 text-primary"/> About the Company</h3>
                  <div className="flex items-start gap-4">
-                    {job.companyLogoUrl && (
+                    {companyInfo.logoUrl && (
                       <div className="relative w-20 h-20 shrink-0">
-                        <Image src={job.companyLogoUrl} alt={`${job.companyName} logo`} layout="fill" objectFit="contain" className="rounded-md"/>
+                        <Image src={companyInfo.logoUrl} alt={`${companyInfo.name || 'Company'} logo`} layout="fill" objectFit="contain" className="rounded-md"/>
                       </div>
                     )}
                     <div className="flex-grow">
-                      <h4 className="font-bold text-xl">{job.companyName}</h4>
-                      {job.companyWebsite && (
+                      <h4 className="font-bold text-xl">{companyInfo.name}</h4>
+                      {companyInfo.website && (
                         <Button asChild variant="link" size="sm" className="p-0 h-auto text-primary">
-                           <Link href={job.companyWebsite} target="_blank" rel="noopener noreferrer" >
+                           <Link href={companyInfo.website} target="_blank" rel="noopener noreferrer" >
                              Visit Website <LinkIcon className="ml-1 h-3 w-3"/>
                            </Link>
                         </Button>
                       )}
-                      <p className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap">{job.companyDescription}</p>
+                      <p className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap">{companyInfo.description}</p>
                     </div>
                  </div>
               </div>
