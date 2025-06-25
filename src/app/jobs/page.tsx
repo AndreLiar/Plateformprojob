@@ -41,6 +41,7 @@ async function getJobs(): Promise<SerializedJob[]> {
         companyLogoUrl: data.companyLogoUrl || '',
         companyDescription: data.companyDescription || '',
         companyWebsite: data.companyWebsite || '',
+        applicationCount: data.applicationCount ?? 0,
         createdAt: (data.createdAt as Timestamp).toDate().toISOString(),
         updatedAt: (data.updatedAt as Timestamp).toDate().toISOString(),
       };

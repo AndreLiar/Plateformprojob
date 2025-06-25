@@ -1,7 +1,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { db } from '@/lib/firebase';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, increment } from 'firebase/firestore';
 import type { Application } from '@/lib/types';
 
 export async function POST(req: NextRequest) {
@@ -39,6 +39,18 @@ export async function POST(req: NextRequest) {
     await updateDoc(appDocRef, {
       status: 'Withdrawn',
     });
+
+    // Decrement the application count on the job, if jobId exists
+    if (application.jobId) {
+        const jobDocRef = doc(db, 'jobs', application.jobId);
+        const jobDocSnap = await getDoc(jobDocRef);
+        // Only decrement if the job exists and count is > 0, to avoid negative counts
+        if (jobDocSnap.exists() && (jobDocSnap.data().applicationCount ?? 0) > 0) {
+            await updateDoc(jobDocRef, {
+                applicationCount: increment(-1),
+            });
+        }
+    }
 
     return NextResponse.json({ message: 'Application withdrawn successfully.' });
 

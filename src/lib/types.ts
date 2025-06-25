@@ -65,6 +65,7 @@ export interface Job {
   recruiterId: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  applicationCount?: number;
 
   // Denormalized company data
   companyName?: string;

@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, UploadCloud } from 'lucide-react';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from 'firebase/firestore';
 import { analyzeCvAgainstJob, type AnalyzeCvInput, type AnalyzeCvOutput } from '@/ai/flows/analyze-cv-flow';
 
 interface ApplyJobDialogProps {
@@ -59,7 +59,7 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!user || !userProfile || userProfile.role !== 'candidate') {
+    if (!user || !userProfile || userProfile.role !== 'candidate' || !job.id) {
       toast({ variant: 'destructive', title: 'Error', description: 'You must be logged in as a candidate to apply.' });
       return;
     }
@@ -182,6 +182,12 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
       };
 
       await addDoc(appCollectionRef, applicationData);
+
+      // Increment the application count on the job
+      const jobDocRef = doc(db, 'jobs', job.id);
+      await updateDoc(jobDocRef, {
+        applicationCount: increment(1),
+      });
 
       toast({
         title: 'Application Submitted!',

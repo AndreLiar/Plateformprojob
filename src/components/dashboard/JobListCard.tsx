@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, useCallback } from 'react';
 import ApplyJobDialog from '@/components/jobs/ApplyJobDialog';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, limit, doc, updateDoc, arrayUnion, arrayRemove, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, doc, updateDoc, arrayUnion, arrayRemove, addDoc, serverTimestamp, increment } from 'firebase/firestore';
 import ViewApplicantsDialog from '@/components/dashboard/recruiter/ViewApplicantsDialog';
 import JobDetailsDialog from '@/components/jobs/JobDetailsDialog';
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +23,7 @@ interface JobForCard extends Omit<OriginalJobType, 'createdAt' | 'updatedAt' | '
   platform: string;
   technologies: string;
   modules?: string;
+  applicationCount?: number;
   createdAt?: Timestamp | string;
   updatedAt?: Timestamp | string;
 }
@@ -154,6 +155,12 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
 
       await addDoc(appCollectionRef, applicationData);
 
+      // Increment the application count on the job
+      const jobDocRef = doc(db, 'jobs', job.id);
+      await updateDoc(jobDocRef, {
+        applicationCount: increment(1),
+      });
+
       toast({
         title: 'Application Submitted!',
         description: `You've successfully applied for ${job.title} using your saved CV.`
@@ -206,6 +213,14 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
             <Briefcase className="h-4 w-4 mr-2 text-primary" />
             {job.contractType}
           </div>
+          {job.applicationCount !== undefined && !isRecruiterView && (
+            <div className="flex items-center text-sm text-muted-foreground">
+              <Users className="h-4 w-4 mr-2 text-primary" />
+              {job.applicationCount > 0
+                ? `${job.applicationCount} applicant(s)`
+                : 'Be the first to apply'}
+            </div>
+          )}
           <p className="text-sm line-clamp-3 pt-2">{job.description}</p>
         </CardContent>
         <CardFooter className="border-t pt-4 flex flex-wrap justify-between items-center gap-y-2 gap-x-4">

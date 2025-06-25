@@ -115,7 +115,6 @@ export default function JobPostForm() {
   const [allLocationsList, setAllLocationsList] = useState<string[]>([]);
   const [locationSearch, setLocationSearch] = useState('');
   const [filteredLocations, setFilteredLocations] = useState<string[]>([]);
-  const [isLocationPopoverOpen, setIsLocationPopoverOpen] = useState(false);
   const [locationFuse, setLocationFuse] = useState<Fuse<string> | null>(null);
 
   useEffect(() => {
@@ -259,6 +258,7 @@ export default function JobPostForm() {
         recruiterId: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        applicationCount: 0,
         companyName: userProfile.companyName || 'A Company',
         companyWebsite: userProfile.companyWebsite || '',
         companyDescription: userProfile.companyDescription || '',
