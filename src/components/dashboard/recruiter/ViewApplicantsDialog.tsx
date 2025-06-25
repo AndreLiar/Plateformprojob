@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useCallback } from 'react';
@@ -16,7 +17,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, ExternalLink, UserX, FileText, AlertTriangle, Sparkles, Info } from 'lucide-react';
+import { Loader2, UserX, FileText, AlertTriangle, Sparkles, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";

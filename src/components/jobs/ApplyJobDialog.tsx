@@ -148,6 +148,7 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         await updateDoc(userDocRef, {
           cvUrl: cvUrl,
           cvPublicId: cloudinaryPublicId,
+          cvMimeType: cvFile.type,
         });
       } catch (profileUpdateError) {
         console.error("Failed to update user profile with new CV:", profileUpdateError);

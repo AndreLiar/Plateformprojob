@@ -11,7 +11,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, useCallback } from 'react';
 import ApplyJobDialog from '@/components/jobs/ApplyJobDialog';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, limit, doc, updateDoc, arrayUnion, arrayRemove, addDoc, serverTimestamp, increment } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import ViewApplicantsDialog from '@/components/dashboard/recruiter/ViewApplicantsDialog';
 import JobDetailsDialog from '@/components/jobs/JobDetailsDialog';
 import { useToast } from "@/hooks/use-toast";
@@ -134,39 +134,22 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
     
     setIsQuickApplying(true);
     try {
-      const appCollectionRef = collection(db, 'applications');
-      const applicationData = {
-        candidateId: user.uid,
-        candidateName: userProfile.displayName || userProfile.email,
-        candidateEmail: user.email,
-        jobId: job.id,
-        jobTitle: job.title,
-        recruiterId: job.recruiterId,
-        cvUrl: userProfile.cvUrl,
-        cloudinaryPublicId: userProfile.cvPublicId || null,
-        appliedAt: serverTimestamp(),
-        status: 'Applied' as const,
-        aiScore: null,
-        aiAnalysisSummary: "AI analysis not available for one-click apply.",
-        aiStrengths: [],
-        aiWeaknesses: [],
-        companyName: job.companyName || '',
-        companyLogoUrl: job.companyLogoUrl || '',
-      };
-
-      await addDoc(appCollectionRef, applicationData);
-
-      // Increment the application count on the job
-      const jobDocRef = doc(db, 'jobs', job.id);
-      await updateDoc(jobDocRef, {
-        applicationCount: increment(1),
+       const response = await fetch('/api/applications/apply-one-click', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: job.id, candidateId: user.uid }),
       });
+      
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to submit application.');
+      }
 
       toast({
         title: 'Application Submitted!',
         description: `You've successfully applied for ${job.title} using your saved CV.`
       });
-      checkApplicationStatus();
+      checkApplicationStatus(); // This will update the button to show "Applied"
     } catch (error: any) {
       console.error("Error during one-click apply:", error);
       toast({
@@ -180,7 +163,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
   };
 
   const showApplyAction = !isRecruiterView && userProfile?.role === 'candidate' && job.id;
-  const canQuickApply = !!userProfile?.cvUrl;
+  const canQuickApply = !!userProfile?.cvUrl && !!userProfile?.cvMimeType;
   const jobForDialogs = job as OriginalJobType;
 
   return (
@@ -264,7 +247,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
                     size="sm" 
                     onClick={canQuickApply ? handleOneClickApply : () => setIsApplyDialogOpen(true)} 
                     className="bg-accent hover:bg-accent/90 text-accent-foreground"
-                    title={canQuickApply ? "Apply using your saved CV" : "Upload CV and apply"}
+                    title={canQuickApply ? "Apply using your saved CV" : "Upload new CV and apply"}
                 >
                     <Send className="mr-2 h-4 w-4" /> Apply Now
                 </Button>

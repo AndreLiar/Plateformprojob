@@ -1,3 +1,4 @@
+
 import type { Timestamp } from 'firebase/firestore';
 
 export interface WorkExperience {
@@ -45,6 +46,7 @@ export interface UserProfile {
   skills?: string;
   cvUrl?: string;
   cvPublicId?: string;
+  cvMimeType?: string;
   workExperience?: WorkExperience[];
   education?: Education[];
 }
