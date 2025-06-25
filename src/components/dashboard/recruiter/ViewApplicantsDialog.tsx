@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useCallback } from 'react';
@@ -17,7 +16,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, ExternalLink, UserX, FileText, AlertTriangle, Sparkles, Info } from 'lucide-react';
+import { Loader2, ExternalLink, UserX, FileText, AlertTriangle, Sparkles, Info, FileQuestion } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -26,6 +25,9 @@ import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/hooks/useAuth';
+import { generateInterviewQuestions, type InterviewQuestionGeneratorInput, type InterviewQuestionGeneratorOutput } from '@/ai/flows/interview-question-generator';
+import InterviewQuestionsDialog from './InterviewQuestionsDialog';
+
 
 interface JobForDialog extends Omit<OriginalJobType, 'createdAt' | 'updatedAt'> {
   createdAt?: Timestamp | string;
@@ -47,6 +49,12 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
   const [loading, setLoading] = useState(false);
   const [missingIndexError, setMissingIndexError] = useState(false);
   const { toast } = useToast();
+  
+  // State for Interview Questions feature
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState<string | null>(null); // Store applicant ID
+  const [isQuestionsDialogOpen, setIsQuestionsDialogOpen] = useState(false);
+  const [generatedQuestions, setGeneratedQuestions] = useState<InterviewQuestionGeneratorOutput | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<{name: string, jobTitle: string} | null>(null);
 
   const fetchApplications = useCallback(async () => {
     if (!job?.id) return;
@@ -120,6 +128,32 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
     }
   };
 
+  const handleGenerateQuestions = async (app: Application) => {
+    if (!app.id) return;
+    setIsGeneratingQuestions(app.id);
+    try {
+      const input: InterviewQuestionGeneratorInput = {
+        jobTitle: job.title,
+        jobDescription: job.description,
+        candidateStrengths: app.aiStrengths || [],
+        candidateWeaknesses: app.aiWeaknesses || [],
+      };
+      
+      const result = await generateInterviewQuestions(input);
+      setGeneratedQuestions(result);
+      setSelectedCandidate({ name: app.candidateName || 'Candidate', jobTitle: job.title });
+      setIsQuestionsDialogOpen(true);
+
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Generation Failed",
+        description: "Could not generate interview questions. " + error.message,
+      });
+    } finally {
+      setIsGeneratingQuestions(null);
+    }
+  };
 
   const getScoreBadgeVariant = (score: number | null | undefined): "default" | "secondary" | "destructive" | "outline" => {
     if (score === null || score === undefined) return "outline";
@@ -131,131 +165,152 @@ export default function ViewApplicantsDialog({ job, open, onOpenChange }: ViewAp
   if (!job) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-6xl max-h-[90vh] flex flex-col p-0">
-        <DialogHeader className="p-6 pb-4 border-b">
-          <DialogTitle className="font-headline text-2xl text-primary">Applicants for: {job.title}</DialogTitle>
-          <DialogDescription>
-            Review candidates who applied. Sorted by AI score.
-          </DialogDescription>
-        </DialogHeader>
-        <TooltipProvider>
-        <ScrollArea className="flex-grow">
-          <div className="px-6">
-            {loading ? (
-              <div className="flex justify-center items-center h-40">
-                <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              </div>
-            ) : missingIndexError ? (
-              <Alert variant="destructive" className="my-4">
-                <AlertTriangle className="h-5 w-5" />
-                <AlertTitle>Firestore Index Required</AlertTitle>
-                <AlertDescription>
-                  <p className="mb-2">To view applicants efficiently, a Firestore index is likely needed.</p>
-                  <p>
-                    If you see this message, please consider adding the composite index for 'jobId' (ascending) and 'appliedAt' (descending) on the 'applications' collection in your Firebase console.
-                    <Link href={firestoreIndexCreationUrl} target="_blank" rel="noopener noreferrer" className="text-destructive-foreground underline ml-1">
-                      Click here for a pre-filled index creation link.
-                    </Link>
-                  </p>
-                </AlertDescription>
-              </Alert>
-            ) : applications.length === 0 ? (
-              <div className="text-center py-10 text-muted-foreground">
-                <UserX className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-                <p className="text-xl font-semibold">No applicants yet.</p>
-                <p>Check back later to see who has applied for this role.</p>
-              </div>
-            ) : (
-              <div className="relative w-full overflow-auto">
-                <Table className="min-w-full">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[18%]">Candidate</TableHead>
-                      <TableHead className="w-[8%] text-center">
-                         <div className="flex items-center justify-center gap-1">
-                            <Sparkles className="h-3 w-3 text-primary opacity-70" />
-                            AI Score
-                             <Tooltip>
-                              <TooltipTrigger asChild><Info className="h-3 w-3 cursor-help opacity-60" /></TooltipTrigger>
-                              <TooltipContent><p>CV match score (0-100). Higher is better.</p></TooltipContent>
-                            </Tooltip>
-                         </div>
-                      </TableHead>
-                      <TableHead className="w-[25%]">AI Summary</TableHead>
-                      <TableHead className="w-[15%]">Status</TableHead>
-                      <TableHead className="w-[17%]">Applied On</TableHead>
-                      <TableHead className="w-[10%] text-right">CV</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {applications.map((app) => (
-                      <TableRow key={app.id} className="hover:bg-muted/20">
-                        <TableCell className="font-medium py-3">
-                            <div className="font-semibold">{app.candidateName || 'N/A'}</div>
-                            <div className="text-xs text-muted-foreground">{app.candidateEmail || 'N/A'}</div>
-                        </TableCell>
-                        <TableCell className="py-3 text-center">
-                            <Badge variant={getScoreBadgeVariant(app.aiScore)} className="text-base font-bold">
-                              {app.aiScore ?? 'N/A'}
-                            </Badge>
-                        </TableCell>
-                        <TableCell className="py-3 text-xs text-muted-foreground max-w-sm truncate">
-                          <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div>{app.aiAnalysisSummary || "N/A"}</div>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs whitespace-normal">
-                                <p>{app.aiAnalysisSummary || "No summary available."}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                        </TableCell>
-                         <TableCell>
-                          <Select
-                            value={app.status}
-                            onValueChange={(newStatus) => handleStatusChange(app.id as string, newStatus as ApplicationStatus)}
-                          >
-                            <SelectTrigger className="text-xs h-8">
-                              <SelectValue placeholder="Set status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {recruiterStatuses.map(status => (
-                                <SelectItem key={status} value={status} className="text-xs">
-                                  {status}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell className="py-3 text-xs">
-                          {app.appliedAt?.toDate ? format(app.appliedAt.toDate(), 'PPp') : 'N/A'}
-                        </TableCell>
-                        <TableCell className="text-right py-3 whitespace-nowrap">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => window.open(app.cvUrl, '_blank')}
-                            disabled={!app.cvUrl}
-                            className="hover:bg-accent hover:text-accent-foreground"
-                          >
-                            <FileText className="mr-2 h-4 w-4" /> View CV <ExternalLink className="ml-1 h-3 w-3" />
-                          </Button>
-                        </TableCell>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-6xl max-h-[90vh] flex flex-col p-0">
+          <DialogHeader className="p-6 pb-4 border-b">
+            <DialogTitle className="font-headline text-2xl text-primary">Applicants for: {job.title}</DialogTitle>
+            <DialogDescription>
+              Review candidates who applied. Sorted by AI score.
+            </DialogDescription>
+          </DialogHeader>
+          <TooltipProvider>
+          <ScrollArea className="flex-grow">
+            <div className="px-6">
+              {loading ? (
+                <div className="flex justify-center items-center h-40">
+                  <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                </div>
+              ) : missingIndexError ? (
+                <Alert variant="destructive" className="my-4">
+                  <AlertTriangle className="h-5 w-5" />
+                  <AlertTitle>Firestore Index Required</AlertTitle>
+                  <AlertDescription>
+                    <p className="mb-2">To view applicants efficiently, a Firestore index is likely needed.</p>
+                    <p>
+                      If you see this message, please consider adding the composite index for 'jobId' (ascending) and 'appliedAt' (descending) on the 'applications' collection in your Firebase console.
+                      <Link href={firestoreIndexCreationUrl} target="_blank" rel="noopener noreferrer" className="text-destructive-foreground underline ml-1">
+                        Click here for a pre-filled index creation link.
+                      </Link>
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              ) : applications.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <UserX className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+                  <p className="text-xl font-semibold">No applicants yet.</p>
+                  <p>Check back later to see who has applied for this role.</p>
+                </div>
+              ) : (
+                <div className="relative w-full overflow-auto">
+                  <Table className="min-w-full">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[18%]">Candidate</TableHead>
+                        <TableHead className="w-[8%] text-center">
+                           <div className="flex items-center justify-center gap-1">
+                              <Sparkles className="h-3 w-3 text-primary opacity-70" />
+                              AI Score
+                               <Tooltip>
+                                <TooltipTrigger asChild><Info className="h-3 w-3 cursor-help opacity-60" /></TooltipTrigger>
+                                <TooltipContent><p>CV match score (0-100). Higher is better.</p></TooltipContent>
+                              </Tooltip>
+                           </div>
+                        </TableHead>
+                        <TableHead className="w-[25%]">AI Summary</TableHead>
+                        <TableHead className="w-[15%]">Status</TableHead>
+                        <TableHead className="w-[17%]">Applied On</TableHead>
+                        <TableHead className="w-[17%] text-right">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </div>
-        </ScrollArea>
-        </TooltipProvider>
-        <DialogFooter className="p-6 pt-4 border-t mt-auto">
-            <DialogClose asChild>
-                <Button variant="outline" className="w-full sm:w-auto">Close</Button>
-            </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+                    </TableHeader>
+                    <TableBody>
+                      {applications.map((app) => (
+                        <TableRow key={app.id} className="hover:bg-muted/20">
+                          <TableCell className="font-medium py-3">
+                              <div className="font-semibold">{app.candidateName || 'N/A'}</div>
+                              <div className="text-xs text-muted-foreground">{app.candidateEmail || 'N/A'}</div>
+                          </TableCell>
+                          <TableCell className="py-3 text-center">
+                              <Badge variant={getScoreBadgeVariant(app.aiScore)} className="text-base font-bold">
+                                {app.aiScore ?? 'N/A'}
+                              </Badge>
+                          </TableCell>
+                          <TableCell className="py-3 text-xs text-muted-foreground max-w-sm truncate">
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div>{app.aiAnalysisSummary || "N/A"}</div>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs whitespace-normal">
+                                  <p>{app.aiAnalysisSummary || "No summary available."}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                          </TableCell>
+                           <TableCell>
+                            <Select
+                              value={app.status}
+                              onValueChange={(newStatus) => handleStatusChange(app.id as string, newStatus as ApplicationStatus)}
+                            >
+                              <SelectTrigger className="text-xs h-8">
+                                <SelectValue placeholder="Set status" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {recruiterStatuses.map(status => (
+                                  <SelectItem key={status} value={status} className="text-xs">
+                                    {status}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell className="py-3 text-xs">
+                            {app.appliedAt?.toDate ? format(app.appliedAt.toDate(), 'PPp') : 'N/A'}
+                          </TableCell>
+                          <TableCell className="text-right py-3 whitespace-nowrap space-x-2">
+                             <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleGenerateQuestions(app)}
+                              disabled={isGeneratingQuestions === app.id || !app.aiAnalysisSummary || (app.aiScore === 0)}
+                            >
+                              {isGeneratingQuestions === app.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FileQuestion className="mr-2 h-4 w-4" />}
+                              Questions
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => window.open(app.cvUrl, '_blank')}
+                              disabled={!app.cvUrl}
+                              className="hover:bg-accent hover:text-accent-foreground"
+                            >
+                              <FileText className="mr-2 h-4 w-4" /> View CV
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+          </TooltipProvider>
+          <DialogFooter className="p-6 pt-4 border-t mt-auto">
+              <DialogClose asChild>
+                  <Button variant="outline" className="w-full sm:w-auto">Close</Button>
+              </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {selectedCandidate && (
+        <InterviewQuestionsDialog
+          open={isQuestionsDialogOpen}
+          onOpenChange={setIsQuestionsDialogOpen}
+          questions={generatedQuestions}
+          candidateName={selectedCandidate.name}
+          jobTitle={selectedCandidate.jobTitle}
+        />
+      )}
+    </>
   );
 }
