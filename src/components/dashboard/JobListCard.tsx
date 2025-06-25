@@ -16,13 +16,15 @@ import ViewApplicantsDialog from '@/components/dashboard/recruiter/ViewApplicant
 import JobDetailsDialog from '@/components/jobs/JobDetailsDialog';
 import { useToast } from "@/hooks/use-toast";
 import { cn } from '@/lib/utils';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import Image from 'next/image';
 
 interface JobForCard extends Omit<OriginalJobType, 'createdAt' | 'updatedAt' | 'platform'> {
   id: string;
   platform: string;
   technologies: string;
   modules?: string;
-  createdAt?: Timestamp | string; // Allow string for serialized date from server
+  createdAt?: Timestamp | string;
   updatedAt?: Timestamp | string;
 }
 
@@ -176,14 +178,25 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
     <>
       <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col h-full">
         <CardHeader>
-          <CardTitle className="text-xl font-headline text-primary">{job.title}</CardTitle>
-          <CardDescription className="text-sm text-muted-foreground">Posted {postedDate}</CardDescription>
+           <div className="flex items-center gap-3">
+              {job.companyLogoUrl ? (
+                <Avatar>
+                  <AvatarImage src={job.companyLogoUrl} alt={`${job.companyName} logo`} className="object-contain" />
+                  <AvatarFallback>{job.companyName?.charAt(0)}</AvatarFallback>
+                </Avatar>
+              ) : (
+                <Avatar>
+                  <AvatarFallback>{job.companyName?.charAt(0) || 'C'}</AvatarFallback>
+                </Avatar>
+              )}
+              <div>
+                <CardTitle className="text-xl font-headline text-primary">{job.title}</CardTitle>
+                <CardDescription className="text-sm font-medium text-muted-foreground">{job.companyName || "A Company"}</CardDescription>
+              </div>
+          </div>
+          <p className="text-xs text-muted-foreground pt-2">Posted {postedDate}</p>
         </CardHeader>
         <CardContent className="flex-grow space-y-3">
-          <div className="flex items-center text-sm text-muted-foreground">
-            <Settings2 className="h-4 w-4 mr-2 text-primary" />
-            Platform: {job.platform}
-          </div>
           <div className="flex items-center text-sm text-muted-foreground">
             <MapPin className="h-4 w-4 mr-2 text-primary" />
             {job.location}
@@ -192,35 +205,7 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
             <Briefcase className="h-4 w-4 mr-2 text-primary" />
             {job.contractType}
           </div>
-          <div className="flex items-center text-sm text-muted-foreground">
-            <Zap className="h-4 w-4 mr-2 text-primary" />
-            {job.experienceLevel} Level
-          </div>
-          <p className="text-sm line-clamp-3">{job.description}</p>
-          
-          {(job.technologies && typeof job.technologies === 'string' && job.technologies.trim() !== "") && (
-            <div className="pt-2">
-              <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-1">Tech Stack:</h4>
-              <div className="flex flex-wrap gap-1">
-                {job.technologies.split(',').map(tech => tech.trim()).filter(tech => tech).map(tech => (
-                    <Badge key={tech} variant="secondary" className="mr-1 mb-1">{tech}</Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {job.modules && job.modules.trim() !== "" && (
-            <div className="pt-2">
-              <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-1 flex items-center">
-                <Layers className="h-3 w-3 mr-1" /> Modules/Specializations:
-              </h4>
-              <div className="flex flex-wrap gap-1">
-                {job.modules.split(',').map(mod => mod.trim()).filter(mod => mod).map(mod => (
-                  <Badge key={mod} variant="outline" className="mr-1 mb-1 bg-muted/50 border-muted-foreground/30">{mod}</Badge>
-                ))}
-              </div>
-            </div>
-          )}
+          <p className="text-sm line-clamp-3 pt-2">{job.description}</p>
         </CardContent>
         <CardFooter className="border-t pt-4 flex flex-wrap justify-between items-center gap-y-2 gap-x-4">
           <Button variant="outline" size="sm" onClick={() => setIsJobDetailsDialogOpen(true)}>

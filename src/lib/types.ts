@@ -28,8 +28,16 @@ export interface UserProfile {
   createdAt: Timestamp;
   freePostsRemaining?: number;
   purchasedPostsRemaining?: number;
-  savedJobs?: string[];
   
+  // Recruiter specific
+  companyName?: string;
+  companyWebsite?: string;
+  companyDescription?: string;
+  companyLogoUrl?: string;
+  companyLogoPublicId?: string;
+
+  // Candidate specific
+  savedJobs?: string[];
   phone?: string;
   linkedin?: string;
   headline?: string;
@@ -37,7 +45,6 @@ export interface UserProfile {
   skills?: string;
   cvUrl?: string;
   cvPublicId?: string;
-
   workExperience?: WorkExperience[];
   education?: Education[];
 }
@@ -49,15 +56,21 @@ export interface Job {
   id?: string; // Firestore document ID
   title: string;
   description: string;
-  platform: string; // This is the new platform category e.g. Salesforce, SAP
-  technologies: string; // Comma-separated specific tech e.g. Kubernetes, AWS, GCP
-  modules?: string; // Optional: Comma-separated modules e.g. Sales Cloud, FI/CO
+  platform: string;
+  technologies: string;
+  modules?: string;
   location: string;
   contractType: ContractType;
   experienceLevel: ExperienceLevel;
-  recruiterId: string; // UID of the recruiter who posted
+  recruiterId: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+
+  // Denormalized company data
+  companyName?: string;
+  companyWebsite?: string;
+  companyDescription?: string;
+  companyLogoUrl?: string;
 }
 
 export type ApplicationStatus = "Applied" | "Under Review" | "Interviewing" | "Offer Extended" | "Rejected" | "Withdrawn";
@@ -65,18 +78,17 @@ export type ApplicationStatus = "Applied" | "Under Review" | "Interviewing" | "O
 export interface Application {
   id?: string; // Firestore document ID
   candidateId: string;
-  candidateName: string | null; // Denormalized for recruiter view
-  candidateEmail: string | null; // Denormalized
+  candidateName: string | null;
+  candidateEmail: string | null;
   jobId: string;
-  jobTitle: string; // Denormalized from Job for quick display
-  recruiterId: string; // UID of the recruiter for this job
-  cvUrl: string; // URL to the CV stored in Cloudinary
-  cloudinaryPublicId?: string; // Public ID from Cloudinary if needed for management
+  jobTitle: string;
+  recruiterId: string;
+  cvUrl: string;
+  cloudinaryPublicId?: string;
   appliedAt: Timestamp;
   status: ApplicationStatus;
-  // coverLetter?: string; // Optional
-  aiScore?: number; // AI-generated score (e.g., 0-100)
-  aiAnalysisSummary?: string; // Brief AI summary
-  aiStrengths?: string[]; // Array of AI-identified strengths
-  aiWeaknesses?: string[]; // Array of AI-identified weaknesses/gaps
+  aiScore?: number;
+  aiAnalysisSummary?: string;
+  aiStrengths?: string[];
+  aiWeaknesses?: string[];
 }

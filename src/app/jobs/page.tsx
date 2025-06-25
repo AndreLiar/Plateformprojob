@@ -1,24 +1,16 @@
 
 import { collection, getDocs, orderBy, query, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Job, ContractType, ExperienceLevel } from '@/lib/types'; 
+import type { Job } from '@/lib/types'; 
 import JobListCard from '@/components/dashboard/JobListCard'; 
 import { Briefcase } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
-interface SerializedJob {
+// Update SerializedJob to include new company fields
+interface SerializedJob extends Omit<Job, 'createdAt' | 'updatedAt'> {
   id: string;
-  title: string;
-  description: string;
-  platform: string; 
-  technologies: string; 
-  modules?: string; // Added modules
-  location: string;
-  contractType: ContractType;
-  experienceLevel: ExperienceLevel;
-  recruiterId: string;
   createdAt: string; 
   updatedAt: string; 
 }
@@ -40,11 +32,15 @@ async function getJobs(): Promise<SerializedJob[]> {
         description: data.description,
         platform: data.platform, 
         technologies: data.technologies, 
-        modules: data.modules || "", // Handle optional modules
+        modules: data.modules || "",
         location: data.location,
         contractType: data.contractType,
         experienceLevel: data.experienceLevel,
         recruiterId: data.recruiterId,
+        companyName: data.companyName || '',
+        companyLogoUrl: data.companyLogoUrl || '',
+        companyDescription: data.companyDescription || '',
+        companyWebsite: data.companyWebsite || '',
         createdAt: (data.createdAt as Timestamp).toDate().toISOString(),
         updatedAt: (data.updatedAt as Timestamp).toDate().toISOString(),
       };
@@ -101,5 +97,3 @@ export default async function BrowseJobsPage() {
     </div>
   );
 }
-
-    

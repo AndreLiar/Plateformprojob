@@ -4,14 +4,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
-import { PlusCircle, Briefcase, Home } from 'lucide-react';
+import { PlusCircle, Briefcase, Home, Building } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: Home },
   { href: '/dashboard/post-job', label: 'Post New Job', icon: PlusCircle },
   { href: '/dashboard/my-jobs', label: 'My Jobs', icon: Briefcase },
-  // { href: '/dashboard/settings', label: 'Settings', icon: Settings }, // Example for future extension
+  { href: '/dashboard/company-profile', label: 'Company Profile', icon: Building },
 ];
 
 export default function SidebarNav() {
@@ -27,8 +27,6 @@ export default function SidebarNav() {
               isActive={pathname === item.href}
               className={cn(
                 "w-full justify-start"
-                // The complex and inconsistent logic was here. 
-                // It's removed because the `isActive` prop correctly handles the active state styling.
               )}
               tooltip={{ children: item.label, side: 'right', align: 'center' }}
             >
