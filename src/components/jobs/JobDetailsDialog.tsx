@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Briefcase, MapPin, Zap, Settings2, Clock, FileText, Link as LinkIcon, Building } from 'lucide-react';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import Image from 'next/image';
@@ -22,7 +21,6 @@ import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-
 
 interface JobForDialog extends Omit<OriginalJobType, 'createdAt' | 'updatedAt' | 'id'> {
   id?: string;
@@ -45,7 +43,6 @@ interface CompanyInfo {
     logoUrl?: string;
 }
 
-
 export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isCandidateView }: JobDetailsDialogProps) {
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [isLoadingCompanyInfo, setIsLoadingCompanyInfo] = useState(false);
@@ -54,7 +51,6 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
     const fetchCompanyInfoForLegacyJobs = async () => {
         if (!job || !job.recruiterId) return;
 
-        // If company info is already denormalized on the job object, use it directly.
         if (job.companyName) {
             setCompanyInfo({
                 name: job.companyName,
@@ -65,7 +61,6 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
             return;
         }
 
-        // Otherwise, fetch it from the recruiter's user profile (for legacy jobs).
         setIsLoadingCompanyInfo(true);
         try {
             const userDocRef = doc(db, 'users', job.recruiterId);
@@ -91,7 +86,6 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
         fetchCompanyInfoForLegacyJobs();
     }
     
-    // Reset when dialog closes
     if (!open) {
         setCompanyInfo(null);
         setIsLoadingCompanyInfo(false);
@@ -130,17 +124,15 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col p-0">
-        <DialogHeader className="p-6 pb-4 border-b">
+        <DialogHeader className="p-6 pb-4 border-b flex-shrink-0">
           <DialogTitle className="text-2xl font-headline text-primary">{job.title}</DialogTitle>
           <DialogDescription className="flex items-center text-sm text-muted-foreground pt-1">
             <Clock className="h-4 w-4 mr-1.5" /> Posted {postedDate}
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-grow">
+        <div className="flex-grow overflow-y-auto">
           <div className="p-6 space-y-6">
-            
-            {/* Company Info Section */}
             {isLoadingCompanyInfo && (
               <div className="p-4 rounded-lg bg-muted/30 border space-y-3">
                   <Skeleton className="h-5 w-1/3" />
@@ -179,8 +171,6 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
               </div>
             )}
 
-
-            {/* Job Details Section */}
             <div>
               <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2"><FileText className="h-5 w-5 text-primary"/> Job Details</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm mb-4">
@@ -216,9 +206,9 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
               </div>
             </div>
           </div>
-        </ScrollArea>
+        </div>
 
-        <DialogFooter className="p-6 pt-4 gap-2 sm:gap-0 mt-auto border-t">
+        <DialogFooter className="p-6 pt-4 gap-2 sm:gap-0 border-t flex-shrink-0">
           <DialogClose asChild>
             <Button variant="outline">Close</Button>
           </DialogClose>
