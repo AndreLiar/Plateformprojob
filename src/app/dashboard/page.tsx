@@ -8,12 +8,12 @@ import { collection, query, where, getCountFromServer } from "firebase/firestore
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Briefcase, Users, WalletCards, PlusCircle, Loader2 } from "lucide-react";
+import { Briefcase, Users, WalletCards, PlusCircle, UserMinus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function DashboardPage() {
   const { user, userProfile, loading: authLoading } = useAuth();
-  const [stats, setStats] = useState({ jobCount: 0, applicationCount: 0 });
+  const [stats, setStats] = useState({ jobCount: 0, applicationCount: 0, withdrawnCount: 0 });
   const [loadingStats, setLoadingStats] = useState(true);
 
   useEffect(() => {
@@ -28,15 +28,20 @@ export default function DashboardPage() {
           // Fetch application count
           const appsQuery = query(collection(db, "applications"), where("recruiterId", "==", user.uid));
           const appsSnapshot = await getCountFromServer(appsQuery);
+          
+          // Fetch withdrawn count
+          const appsWithdrawnQuery = query(collection(db, "applications"), where("recruiterId", "==", user.uid), where("status", "==", "Withdrawn"));
+          const withdrawnSnapshot = await getCountFromServer(appsWithdrawnQuery);
 
           setStats({
             jobCount: jobsSnapshot.data().count,
             applicationCount: appsSnapshot.data().count,
+            withdrawnCount: withdrawnSnapshot.data().count
           });
 
         } catch (error) {
           console.error("Error fetching dashboard stats:", error);
-          setStats({ jobCount: 0, applicationCount: 0 });
+          setStats({ jobCount: 0, applicationCount: 0, withdrawnCount: 0 });
         } finally {
           setLoadingStats(false);
         }
@@ -65,7 +70,7 @@ export default function DashboardPage() {
         </Button>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card className="shadow-lg hover:shadow-xl transition-shadow">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Jobs Posted</CardTitle>
@@ -91,6 +96,20 @@ export default function DashboardPage() {
             }
             <p className="text-xs text-muted-foreground">
               Received across all your job posts.
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="shadow-lg hover:shadow-xl transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Applications Withdrawn</CardTitle>
+            <UserMinus className="h-5 w-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-8 w-1/4" /> :
+              <div className="text-2xl font-bold">{stats.withdrawnCount}</div>
+            }
+            <p className="text-xs text-muted-foreground">
+              By candidates across all jobs.
             </p>
           </CardContent>
         </Card>

@@ -14,29 +14,38 @@ import { calculateProfileStrength } from "@/lib/utils";
 
 export default function CandidateDashboardPage() {
   const { user, userProfile, loading: authLoading } = useAuth();
-  const [applicationCount, setApplicationCount] = useState<number | null>(null);
+  const [stats, setStats] = useState({ applicationCount: 0, withdrawnCount: 0 });
   const [loadingStats, setLoadingStats] = useState(true);
 
   useEffect(() => {
     if (user) {
-      const fetchApplicationCount = async () => {
+      const fetchStats = async () => {
         setLoadingStats(true);
         try {
           const applicationsRef = collection(db, "applications");
+          
           const q = query(applicationsRef, where("candidateId", "==", user.uid));
           const snapshot = await getCountFromServer(q);
-          setApplicationCount(snapshot.data().count);
+          
+          const qWithdrawn = query(applicationsRef, where("candidateId", "==", user.uid), where("status", "==", "Withdrawn"));
+          const withdrawnSnapshot = await getCountFromServer(qWithdrawn);
+
+          setStats({
+            applicationCount: snapshot.data().count,
+            withdrawnCount: withdrawnSnapshot.data().count,
+          });
+
         } catch (error) {
-          console.error("Error fetching application count:", error);
-          setApplicationCount(0); // Default to 0 on error
+          console.error("Error fetching application stats:", error);
+          setStats({ applicationCount: 0, withdrawnCount: 0 }); // Default to 0 on error
         } finally {
           setLoadingStats(false);
         }
       };
-      fetchApplicationCount();
+      fetchStats();
     } else if (!authLoading) {
       // Not logged in, not loading auth, so no stats to load
-      setApplicationCount(0);
+      setStats({ applicationCount: 0, withdrawnCount: 0 });
       setLoadingStats(false);
     }
   }, [user, authLoading]);
@@ -133,12 +142,16 @@ export default function CandidateDashboardPage() {
                 </p>
                 <ul className="space-y-1 text-sm">
                   <li>
-                    <span className="font-medium text-foreground">{applicationCount ?? 0}</span>
-                    <span className="text-muted-foreground"> Applications Sent</span>
+                    <span className="font-medium text-foreground">{stats.applicationCount ?? 0}</span>
+                    <span className="text-muted-foreground"> Total Applications</span>
                   </li>
                   <li>
                     <span className="font-medium text-foreground">{userProfile?.savedJobs?.length ?? 0}</span>
                     <span className="text-muted-foreground"> Saved Jobs</span>
+                  </li>
+                   <li>
+                    <span className="font-medium text-foreground">{stats.withdrawnCount ?? 0}</span>
+                    <span className="text-muted-foreground"> Applications Withdrawn</span>
                   </li>
                 </ul>
               </>

@@ -1,9 +1,9 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import Link from "next/link";
-import { Briefcase, FileSearch, Clock, PlusCircle, ExternalLink, Loader2 } from "lucide-react";
+import { Briefcase, FileSearch, Clock, PlusCircle, ExternalLink, Loader2, UserMinus } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
@@ -14,6 +14,18 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import JobDetailsDialog from "@/components/jobs/JobDetailsDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useToast } from "@/hooks/use-toast";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
 
 const statusColors: { [key: string]: string } = {
     "Applied": "bg-green-100 text-green-800 border-green-300",
@@ -32,6 +44,11 @@ export default function AppliedJobsPage() {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [fetchingJobId, setFetchingJobId] = useState<string | null>(null);
+
+  const [isWithdrawDialogOpen, setIsWithdrawDialogOpen] = useState(false);
+  const [applicationToWithdraw, setApplicationToWithdraw] = useState<Application | null>(null);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (user) {
@@ -81,7 +98,54 @@ export default function AppliedJobsPage() {
         setFetchingJobId(null);
     }
   };
+  
+  const handleWithdrawClick = (app: Application) => {
+    setApplicationToWithdraw(app);
+    setIsWithdrawDialogOpen(true);
+  };
+  
+  const handleConfirmWithdraw = async () => {
+    if (!applicationToWithdraw || !user) return;
+    setIsWithdrawing(true);
+    try {
+        const response = await fetch('/api/applications/withdraw', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                applicationId: applicationToWithdraw.id,
+                candidateId: user.uid,
+            }),
+        });
 
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to withdraw application.');
+        }
+
+        toast({
+            title: 'Application Withdrawn',
+            description: `You have successfully withdrawn your application for "${applicationToWithdraw.jobTitle}".`,
+        });
+
+        // Update the UI
+        setAppliedJobs(prevJobs =>
+            prevJobs.map(job =>
+                job.id === applicationToWithdraw.id ? { ...job, status: 'Withdrawn' } : job
+            )
+        );
+
+    } catch (error: any) {
+        toast({
+            variant: 'destructive',
+            title: 'Withdrawal Failed',
+            description: error.message,
+        });
+    } finally {
+        setIsWithdrawing(false);
+        setIsWithdrawDialogOpen(false);
+        setApplicationToWithdraw(null);
+    }
+  };
 
   const isLoading = authLoading || loadingJobs;
 
@@ -142,62 +206,67 @@ export default function AppliedJobsPage() {
             )}
             {user && hasAppliedJobs && (
               <div className="space-y-6">
-                {appliedJobs.map((app) => (
-                  <Card key={app.id} className="shadow-md hover:shadow-lg transition-shadow rounded-md overflow-hidden">
-                    <CardHeader className="pb-3">
-                      <div className="flex justify-between items-start">
-                         <div className="flex items-start gap-4">
-                            {app.companyLogoUrl ? (
-                              <Avatar className="w-12 h-12">
-                                <AvatarImage src={app.companyLogoUrl} alt={`${app.companyName} logo`} className="object-contain" />
-                                <AvatarFallback>{app.companyName?.charAt(0) || 'C'}</AvatarFallback>
-                              </Avatar>
-                            ) : (
-                               <Avatar className="w-12 h-12">
-                                <AvatarFallback>{app.companyName?.charAt(0) || 'C'}</AvatarFallback>
-                              </Avatar>
-                            )}
-                            <div>
-                              <CardTitle className="text-xl text-primary">
-                                {app.jobTitle || "Job Title Not Available"}
-                              </CardTitle>
-                              <CardDescription className="font-medium text-foreground">{app.companyName || "Company Not Available"}</CardDescription>
-                            </div>
+                {appliedJobs.map((app) => {
+                  const canWithdraw = !['Withdrawn', 'Rejected'].includes(app.status);
+                  
+                  return (
+                    <Card key={app.id} className="shadow-md hover:shadow-lg transition-shadow rounded-md overflow-hidden">
+                      <CardHeader className="pb-3">
+                        <div className="flex justify-between items-start">
+                           <div className="flex items-start gap-4">
+                              {app.companyLogoUrl ? (
+                                <Avatar className="w-12 h-12">
+                                  <AvatarImage src={app.companyLogoUrl} alt={`${app.companyName} logo`} className="object-contain" />
+                                  <AvatarFallback>{app.companyName?.charAt(0) || 'C'}</AvatarFallback>
+                                </Avatar>
+                              ) : (
+                                 <Avatar className="w-12 h-12">
+                                  <AvatarFallback>{app.companyName?.charAt(0) || 'C'}</AvatarFallback>
+                                </Avatar>
+                              )}
+                              <div>
+                                <CardTitle className="text-xl text-primary">
+                                  {app.jobTitle || "Job Title Not Available"}
+                                </CardTitle>
+                                <CardDescription className="font-medium text-foreground">{app.companyName || "Company Not Available"}</CardDescription>
+                              </div>
+                          </div>
+                          <span className={`px-3 py-1 text-xs font-semibold rounded-full border ${statusColors[app.status] || 'bg-gray-100 text-gray-800 border-gray-300'}`}>
+                            {app.status}
+                          </span>
                         </div>
-                        <span className={`px-3 py-1 text-xs font-semibold rounded-full border ${statusColors[app.status] || 'bg-gray-100 text-gray-800 border-gray-300'}`}>
-                          {app.status}
-                        </span>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="pt-0 pb-4 text-sm text-muted-foreground space-y-1">
-                      <p>Applied on: {app.appliedAt?.toDate ? format(app.appliedAt.toDate(), 'PPP') : 'Date not available'}</p>
-                      {app.cvUrl && (
-                          <p className="flex items-center gap-1">
-                              Submitted CV: 
-                              <Button 
-                                  variant="link" 
-                                  size="sm" 
-                                  className="p-0 h-auto text-primary"
-                                  onClick={() => window.open(app.cvUrl, '_blank')}
-                              >
-                                  View CV <ExternalLink className="ml-1 h-3 w-3"/>
-                              </Button>
-                          </p>
-                      )}
-                    </CardContent>
-                    <CardFooter className="bg-muted/30 py-3 px-6 border-t flex justify-between items-center">
-                      <Button variant="outline" size="sm" onClick={() => handleViewDetails(app.jobId)} disabled={!!fetchingJobId}>
-                        {fetchingJobId === app.jobId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSearch className="mr-2 h-4 w-4"/>}
-                        View Job Details
-                      </Button>
-                      {app.status === "Applied" && (
-                          <Button variant="outline" size="sm" disabled>
-                              Withdraw Application (Future)
-                          </Button>
-                      )}
-                    </CardFooter>
-                  </Card>
-                ))}
+                      </CardHeader>
+                      <CardContent className="pt-0 pb-4 text-sm text-muted-foreground space-y-1">
+                        <p>Applied on: {app.appliedAt?.toDate ? format(app.appliedAt.toDate(), 'PPP') : 'Date not available'}</p>
+                        {app.cvUrl && (
+                            <p className="flex items-center gap-1">
+                                Submitted CV: 
+                                <Button 
+                                    variant="link" 
+                                    size="sm" 
+                                    className="p-0 h-auto text-primary"
+                                    onClick={() => window.open(app.cvUrl, '_blank')}
+                                >
+                                    View CV <ExternalLink className="ml-1 h-3 w-3"/>
+                                </Button>
+                            </p>
+                        )}
+                      </CardContent>
+                      <CardFooter className="bg-muted/30 py-3 px-6 border-t flex flex-wrap justify-between items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => handleViewDetails(app.jobId)} disabled={!!fetchingJobId}>
+                          {fetchingJobId === app.jobId ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSearch className="mr-2 h-4 w-4"/>}
+                          View Job Details
+                        </Button>
+                        
+                        {canWithdraw && (
+                            <Button variant="destructive" size="sm" onClick={() => handleWithdrawClick(app)}>
+                                <UserMinus className="mr-2 h-4 w-4" /> Withdraw
+                            </Button>
+                        )}
+                      </CardFooter>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -230,6 +299,30 @@ export default function AppliedJobsPage() {
           isCandidateView={false} // Don't show apply button from this view
         />
       )}
+      
+      <AlertDialog open={isWithdrawDialogOpen} onOpenChange={setIsWithdrawDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to withdraw?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. You will be removing your application for the position of
+              <strong className="text-foreground"> {applicationToWithdraw?.jobTitle}</strong> at
+              <strong className="text-foreground"> {applicationToWithdraw?.companyName}</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isWithdrawing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+                onClick={handleConfirmWithdraw}
+                disabled={isWithdrawing}
+                className={cn(buttonVariants({ variant: "destructive" }))}
+            >
+                {isWithdrawing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Yes, Withdraw
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
