@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Job as OriginalJobType, Timestamp, UserProfile } from '@/lib/types';
@@ -130,14 +129,14 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col p-0">
-        <DialogHeader className="p-6 pb-4">
+        <DialogHeader className="p-6 pb-4 border-b">
           <DialogTitle className="text-2xl font-headline text-primary">{job.title}</DialogTitle>
           <DialogDescription className="flex items-center text-sm text-muted-foreground pt-1">
             <Clock className="h-4 w-4 mr-1.5" /> Posted {postedDate}
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 border-y min-h-0">
+        <ScrollArea className="flex-grow">
           <div className="p-6 space-y-6">
             
             {/* Company Info Section */}
@@ -218,7 +217,7 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
           </div>
         </ScrollArea>
 
-        <DialogFooter className="p-6 pt-4 gap-2 sm:gap-0">
+        <DialogFooter className="p-6 pt-4 gap-2 sm:gap-0 mt-auto border-t">
           <DialogClose asChild>
             <Button variant="outline">Close</Button>
           </DialogClose>
