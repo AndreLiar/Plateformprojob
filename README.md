@@ -15,6 +15,7 @@ PlatformPro Jobs is a specialized job board built with Next.js, Firebase, and Ge
 
 ### Recruiter Features:
 - **Authentication**: Sign up and log in as a Recruiter.
+- **Centralized Company Profile**: Manage a dedicated company profile with a name, logo, website, and description that automatically appears on all job postings.
 - **Dashboard**:
     - **Post New Jobs**: A form to create and publish job listings, with fields for title, platform (Salesforce, SAP, Oracle, HubSpot), technologies, modules, location, contract type, experience level, and description.
     - **My Job Postings**: View and manage jobs posted by the recruiter.
@@ -22,7 +23,7 @@ PlatformPro Jobs is a specialized job board built with Next.js, Firebase, and Ge
 - **AI-Powered Candidate Scoring & Sorting**:
     - Candidates are automatically scored and sorted based on how well their CV matches the job description.
     - Recruiters see a concise AI-generated summary for each candidate, highlighting their fit.
-- **Application Status Management**: Recruiters can update the status of each application (e.g., "Under Review", "Interviewing", "Rejected"), which is reflected on the candidate's dashboard.
+- **Application Status Management**: Recruiters can update the status of each application (e.g., "Under Review", "Interviewing", "Rejected", "Withdrawn"), which is reflected on the candidate's dashboard.
 - **Stripe Integration**:
     - Recruiters receive initial free job posts.
     - Ability to purchase additional job post credits via Stripe Checkout.
@@ -37,16 +38,18 @@ PlatformPro Jobs is a specialized job board built with Next.js, Firebase, and Ge
     - List detailed work experience and education history.
 - **Dashboard**:
     - **Profile Strength Indicator**: A visual guide that encourages candidates to complete their profile for better visibility.
-    - **Applied Jobs**: View a list of jobs they have applied for and track their real-time application status as updated by recruiters.
+    - **Applied Jobs**: View a list of jobs they have applied for, track their real-time application status, and withdraw applications.
     - **Saved Jobs**: Bookmark interesting jobs to apply for later.
-- **Job Application**:
+- **Job Application & Withdrawal**:
     - Browse all open job listings.
     - View detailed job descriptions.
     - **One-Click Apply**: Candidates with a completed profile and a saved CV can apply for jobs instantly.
+    - **Withdraw Application**: Candidates can withdraw their application from a job post at any time.
     - Standard application process with CV upload for new users. CVs are stored in Cloudinary.
 
 ### General Features:
 - **Public Job Listings**: A page accessible to everyone, displaying all active job postings.
+- **Transparent Applicant Counts**: Job listings can display the number of candidates who have already applied, providing insight into the role's popularity.
 - **CV Management**: CVs uploaded by candidates are stored in Cloudinary, and recruiters can download them.
 
 ## Project Structure
