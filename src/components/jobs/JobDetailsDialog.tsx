@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Job as OriginalJobType, Timestamp, UserProfile } from '@/lib/types';
