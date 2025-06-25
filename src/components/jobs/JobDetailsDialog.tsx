@@ -137,7 +137,7 @@ export default function JobDetailsDialog({ job, open, onOpenChange, onApply, isC
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 border-y">
+        <ScrollArea className="flex-1 border-y min-h-0">
           <div className="p-6 space-y-6">
             
             {/* Company Info Section */}
