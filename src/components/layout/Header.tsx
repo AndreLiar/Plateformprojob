@@ -1,20 +1,25 @@
-
 "use client";
 
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { LogIn, UserPlus, LayoutDashboard, LogOut, Briefcase, Search } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 
 export default function Header() {
   const { user, userProfile, logout, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   const handleLogout = async () => {
     await logout();
     router.push('/');
   };
+
+  // Do not render the header on any dashboard pages
+  if (pathname.startsWith('/dashboard')) {
+    return null;
+  }
 
   return (
     <header className="bg-card border-b border-border shadow-sm">
@@ -71,5 +76,3 @@ export default function Header() {
     </header>
   );
 }
-
-    
