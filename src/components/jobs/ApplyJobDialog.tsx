@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from 'react';
@@ -178,6 +177,8 @@ export default function ApplyJobDialog({ job, open, onOpenChange, onApplicationS
         aiAnalysisSummary: aiAnalysisResult?.summary ?? "AI analysis was not performed.",
         aiStrengths: aiAnalysisResult?.strengths ?? [],
         aiWeaknesses: aiAnalysisResult?.weaknesses ?? [],
+        companyName: job.companyName || 'A Company',
+        companyLogoUrl: job.companyLogoUrl || '',
       };
 
       await addDoc(appCollectionRef, applicationData);

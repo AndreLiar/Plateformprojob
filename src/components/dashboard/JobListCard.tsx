@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Job as OriginalJobType, Timestamp } from '@/lib/types';
@@ -149,6 +148,8 @@ export default function JobListCard({ job, isRecruiterView = false }: JobListCar
         aiAnalysisSummary: "AI analysis not available for one-click apply.",
         aiStrengths: [],
         aiWeaknesses: [],
+        companyName: job.companyName || 'A Company',
+        companyLogoUrl: job.companyLogoUrl || '',
       };
 
       await addDoc(appCollectionRef, applicationData);

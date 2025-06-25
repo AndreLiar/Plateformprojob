@@ -91,4 +91,6 @@ export interface Application {
   aiAnalysisSummary?: string;
   aiStrengths?: string[];
   aiWeaknesses?: string[];
+  companyName?: string;
+  companyLogoUrl?: string;
 }
