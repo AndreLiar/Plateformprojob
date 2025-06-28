@@ -342,7 +342,17 @@ export default function JobPostForm() {
   };
 
   const handleGenerateAIDescription = async () => {
-    const { jobTitle, platform, technologies, modules, experienceLevel, location, keyResponsibilitiesSummary, companyCultureSnippet, contractType } = form.getValues();
+    const { title, platform, technologies, modules, experienceLevel, location, keyResponsibilitiesSummary, companyCultureSnippet, contractType } = form.getValues();
+    
+    if (!title) {
+        toast({
+            variant: "destructive",
+            title: "Input Required",
+            description: "Please select a 'Job Title' to use AI generation.",
+        });
+        return;
+    }
+
     if (!keyResponsibilitiesSummary) {
       toast({
         variant: "destructive",
@@ -355,7 +365,7 @@ export default function JobPostForm() {
     setIsGeneratingAIDescription(true);
     try {
       const input: GenerateJobDescriptionInput = {
-        jobTitle,
+        jobTitle: title,
         platform,
         technologies,
         modules,
@@ -596,7 +606,7 @@ export default function JobPostForm() {
                     variant="outline" 
                     size="sm"
                     onClick={handleGenerateAIDescription} 
-                    disabled={isGeneratingAIDescription || !form.getValues().keyResponsibilitiesSummary}
+                    disabled={isGeneratingAIDescription || !form.getValues().keyResponsibilitiesSummary || !form.getValues().title}
                     className="absolute top-0 right-0 mt-1 mr-1 bg-accent text-accent-foreground hover:bg-accent/90"
                     style={{transform: 'translateY(-100%)', marginBottom: '0.25rem'}}
                 >
