@@ -115,14 +115,12 @@ STRIPE_WEBHOOK_SECRET=whsec_your_stripe_webhook_secret
 ### Installation
 1. Clone the repository:
    ```bash
-   git clone <your-repository-url>
-   cd <repository-name>
+   git clone https://github.com/AndreLiar/Plateformprojob.git
+   cd Plateformprojob
    ```
 2. Install dependencies:
    ```bash
    npm install
-   # or
-   # yarn install
    ```
 
 ### Running the Application Locally
